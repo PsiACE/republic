@@ -1,0 +1,7 @@
+[project]
+name = "republic"
+version = "0.0.0"
+description = "The minimalistic AI stack for developers who value freedom and efficiency."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
