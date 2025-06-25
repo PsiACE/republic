@@ -3,18 +3,29 @@ name = "republic"
 version = "0.0.0"
 description = "The minimalistic AI stack for developers who value freedom and efficiency."
 readme = "README.md"
+authors = [
+    { name = "Chojan Shang", email = "psiace@apache.org" }
+]
 requires-python = ">=3.11"
 dependencies = []
 
 [project.optional-dependencies]
+prompt = [
+    "republic-prompt",
+]
+all = [
+    "republic[prompt]",
+]
 
 [dependency-groups]
 dev = [
     "ruff >= 0.8.1",
     "pytest >= 8.3.4",
+    "republic[all]",
 ]
 
 [tool.uv.sources]
+republic-prompt = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]

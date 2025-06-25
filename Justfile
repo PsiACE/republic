@@ -15,6 +15,7 @@ lint: sync
 
 test:
 	@uv run pytest tests -vv -s
+	@uv run pytest packages/prompt/tests -vv -s
 
 clean:
 	@rm -rfv ./dist
