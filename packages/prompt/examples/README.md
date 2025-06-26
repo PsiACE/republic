@@ -1,76 +1,73 @@
-# Gemini CLI System Prompt with Republic Prompt
+# Republic Prompt Examples (Gemini CLI System Prompt Variant)
 
-This example demonstrates how Google's complex system prompt (from their CLI agent) can be refactored and managed using Republic Prompt's multi-file architecture.
+This directory contains examples demonstrating the Republic Prompt system, which is a **variant** of Google's Gemini CLI system prompt architecture. While it maintains all the core functionality and design principles of the original, it has been refactored into a maintainable, modular structure with some enhancements.
 
-## The Challenge
+## Architecture Overview
 
-Gemini CLI's original system prompt is a monolithic JavaScript function with:
-- Environment detection mixed with prompt content
-- Hard-coded tool names and workflows
-- Difficult to maintain and customize
+This is **not a 1:1 replication** of Google's monolithic system prompt, but rather a modernized variant that:
 
-## Our Solution
+- **Preserves all core functionality** from the original Google Gemini CLI prompt
+- **Maintains equivalent behavior** for tool usage, safety rules, and environment detection
+- **Includes all major feature points** such as command safety, background processes, and context awareness
+- **Refactored into modular components** for better maintainability and testing
+- **Enhanced with configurable environments** (development, production, simple)
+- **Improved template system** with conditional rendering and variable substitution
 
-We've decomposed Google's complex prompt into a maintainable, scalable architecture:
+## Key Differences from Original
 
-### File Organization
+1. **Modular Architecture**: Split monolithic prompt into reusable components
+2. **Configuration-Driven**: Environment-specific settings via `prompts.toml`
+3. **Template System**: Jinja2-based templates with conditional logic
+4. **Enhanced Testing**: Comprehensive test coverage for all components
+5. **Multiple Variants**: Three different prompt configurations for different use cases
 
-### Before (Monolithic)
-
-- Single JavaScript function with embedded logic
-- Hardcoded environment detection (sandbox, git repository, etc.)
-- Complex conditional workflow generation
-- Difficult to test, modify, and customize
-- Mixed concerns: environment detection, tool definitions, workflows, examples
-
-### After (Republic Prompt)
+## Directory Structure
 
 ```
 examples/
-├── prompts.toml                    # Environment configuration
-├── functions/                      # Modular business logic (Python)
-│   ├── __init__.py                # Function exports
-│   ├── environment.py             # Environment & sandbox detection
-│   ├── tools.py                   # Tool usage & safety guidelines  
-│   └── workflows.py               # Software engineering workflows
-├── snippets/                      # Reusable prompt components
-│   ├── core_mandates.md          # Core behavior rules
-│   ├── tone_guidelines.md        # CLI communication style
-│   ├── environment_detection.md  # Dynamic environment warnings
-│   └── examples.md               # Interaction examples
-├── templates/                     # Dynamic templates
-│   ├── gemini_cli_system_prompt.md  # Main system prompt template
-│   └── simple_agent.md             # Simplified agent template
-└── prompts/                       # Pre-built specialized prompts
-    ├── full_cli_system.md         # Comprehensive CLI system with all functions
-    ├── basic_cli_system.md        # Production-ready CLI system (minimal)
-    └── simple_agent.md            # Lightweight general-purpose assistant
+├── functions/           # Python functions (equivalent to JS functions)
+│   ├── environment.py   # Environment detection and OS utilities
+│   ├── tools.py        # Tool usage and command safety functions  
+│   └── workflows.py    # Workflow and process management
+├── snippets/           # Reusable prompt components
+│   ├── command_safety.md
+│   ├── core_mandates.md
+│   ├── environment_detection.md
+│   └── tone_guidelines.md
+├── templates/          # Base templates for prompt generation
+│   ├── gemini_cli_system_prompt.md
+│   └── simple_agent.md
+├── prompts/           # Generated final prompts
+│   ├── full_cli_system.md      # Development environment (115 lines)
+│   ├── basic_cli_system.md     # Production environment (93 lines)
+│   └── simple_agent.md         # Minimal agent (17 lines)
+└── prompts.toml       # Configuration for all environments
 ```
 
-### Key Refactoring Achievements
+## Core Functionality Preserved
 
-**Original Complexity Broken Down:**
+All major functionality from Google's original system prompt is preserved:
 
-- **Environment Detection** (100+ lines JS) → `environment.py` (266 lines with comprehensive detection)
-  - macOS Seatbelt/App Sandbox detection
-  - Linux container/Docker detection  
-  - Git repository status and workflow integration
-  - Dynamic warning message generation
+### Tool Usage
+- Complete tool enumeration (LSTool, EditTool, GrepTool, etc.)
+- File path handling and parallelism guidelines
+- Background process management
+- Interactive command avoidance
 
-- **Tool Safety Logic** (50+ lines JS) → `tools.py` (175 lines with enhanced safety)
-  - Command danger assessment and explanation generation
-  - Background process detection
-  - Interactive command conversion
-  - Parallel execution recommendations
+### Security & Safety
+- Command explanation requirements for dangerous operations
+- Security best practices enforcement
+- Sensitive information protection
+- User confirmation respect
 
-- **Workflow Management** (150+ lines JS) → `workflows.py` (142 lines structured workflows)
-  - Software engineering task workflows
-  - New application development processes
-  - Verification and testing procedures
-  - Tone and interaction guidelines
+### Environment Detection
+- Operating system detection and adaptation
+- Git repository awareness with appropriate warnings
+- Sandbox environment detection
+- Context-aware behavior modification
 
-- **Template Composition** (200+ lines JS) → Modular snippets + dynamic templates
-  - `core_mandates.md` - Core behavior rules
-  - `tone_guidelines.md` - CLI interaction style
-  - `environment_detection.md` - Dynamic environment warnings
-  - `examples.md` - Interaction examples
+### Command Safety
+- Dangerous command pattern recognition
+- Background process identification
+- Automatic safety explanations
+- User-friendly command guidance

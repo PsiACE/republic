@@ -52,12 +52,15 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
             "safety_first": True,
             "include_examples": True,
             "include_workflows": True,
+            "include_security": True,
         }
 
         try:
             prompt = render(template, full_config, workspace)
             variants["full_cli_system"] = prompt.content
-            print("Generated: full_cli_system.md (comprehensive development CLI system)")
+            print(
+                "Generated: full_cli_system.md (comprehensive development CLI system)"
+            )
         except Exception as e:
             print(f"Error generating full CLI system: {e}")
 
@@ -67,7 +70,7 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
         basic_config = {
             **base_config,
             **workspace.config.environments.get("production", {}),
-            "domain": "general_assistance", 
+            "domain": "general_assistance",
             "agent_type": "production_cli_agent",
             "tone": "concise_direct",
             "max_output_lines": 2,  # Very concise for production
@@ -79,12 +82,15 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
             "safety_first": True,
             "include_examples": False,  # Minimal examples
             "include_workflows": True,  # Keep workflows but simplified
+            "include_security": False,  # No security for basic
         }
 
         try:
             prompt = render(template, basic_config, workspace)
             variants["basic_cli_system"] = prompt.content
-            print("Generated: basic_cli_system.md (production-ready minimal CLI system)")
+            print(
+                "Generated: basic_cli_system.md (production-ready minimal CLI system)"
+            )
         except Exception as e:
             print(f"Error generating basic CLI system: {e}")
 

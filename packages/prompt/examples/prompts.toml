@@ -35,6 +35,7 @@ show_tool_reasoning = true
 max_output_lines = 8
 include_workflows = true
 include_examples = true
+include_security = true
 use_tools = true
 
 # Production environment - minimal output
@@ -45,6 +46,7 @@ show_tool_reasoning = false
 max_output_lines = 2
 include_workflows = true
 include_examples = false
+include_security = true
 use_tools = true
 
 # Sandbox environment with safety focus
@@ -56,4 +58,5 @@ max_output_lines = 5
 include_workflows = true
 include_examples = true
 use_tools = true
+include_security = true
 safety_first = true 

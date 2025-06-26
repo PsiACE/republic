@@ -332,7 +332,7 @@ def load_workspace(
                     template = load_template(template_file)
                     # Apply workspace defaults to template variables
                     defaults = workspace.config.defaults
-                    
+
                     # Start with template variables, then apply defaults, then environment
                     merged_vars = {**template.variables}
                     merged_vars.update(defaults)
@@ -355,7 +355,7 @@ def load_workspace(
                     template = load_template(prompt_file)
                     # Apply workspace defaults to prompt variables
                     defaults = workspace.config.defaults
-                    
+
                     # Start with template variables, then apply defaults, then environment
                     merged_vars = {**template.variables}
                     merged_vars.update(defaults)

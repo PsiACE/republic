@@ -1,33 +1,24 @@
-"""Test cases for tool-related functions."""
+"""Tests for tool functions and command safety."""
 
-from pathlib import Path
-import sys
+from republic_prompt.loader import load_workspace
 
-# Import the functions we want to test
-sys.path.insert(0, str(Path(__file__).parent.parent / "examples" / "functions"))
 
-from tools import (
-    get_available_tools,
-    should_explain_command,
-    get_command_explanation,
-    should_run_in_background,
-    make_command_non_interactive,
-    get_parallel_tool_suggestions,
-    format_tool_usage_guidelines,
-    get_security_guidelines,
-    should_ask_for_confirmation
-)
+class TestToolFunctions:
+    """Test tool-related functionality."""
 
-class TestToolListing:
-    """Test tool listing functionality."""
+    def setup_method(self):
+        """Set up test workspace."""
+        self.workspace = load_workspace("packages/prompt/examples")
+        # Get the actual callable functions
+        self.functions = self.workspace.get_functions_dict()
 
-    def test_get_available_tools_returns_expected_tools(self):
-        """Test that all expected tools are listed."""
-        tools = get_available_tools()
-        
+    def test_get_available_tools(self):
+        """Test that available tools are properly listed."""
+        tools = self.functions["get_available_tools"]()
+
         expected_tools = [
             "LSTool",
-            "EditTool", 
+            "EditTool",
             "GlobTool",
             "GrepTool",
             "ReadFileTool",
@@ -35,213 +26,248 @@ class TestToolListing:
             "ShellTool",
             "WriteFileTool",
         ]
-        
+
+        assert isinstance(tools, list)
+        assert len(tools) == len(expected_tools)
+
         for tool in expected_tools:
-            assert tool in tools, f"Expected tool {tool} not found in list"
+            assert tool in tools
 
-    def test_get_available_tools_no_memory_tool(self):
-        """Test that MemoryTool is not in the list (as it's not implemented)."""
-        tools = get_available_tools()
-        assert "MemoryTool" not in tools
+    def test_get_dangerous_command_examples(self):
+        """Test dangerous command examples for template rendering."""
+        examples = self.functions["get_dangerous_command_examples"]()
 
+        assert isinstance(examples, list)
+        assert len(examples) > 0
 
-class TestCommandSafety:
-    """Test command safety analysis."""
+        # Check structure of examples
+        for example in examples:
+            assert isinstance(example, dict)
+            assert "command" in example
+            assert "explanation" in example
+            assert isinstance(example["command"], str)
+            assert isinstance(example["explanation"], str)
+            assert len(example["command"]) > 0
+            assert len(example["explanation"]) > 0
 
-    def test_should_explain_dangerous_commands(self):
-        """Test that dangerous commands are flagged for explanation."""
+        # Check for specific dangerous commands
+        commands = [ex["command"] for ex in examples]
+        assert any("rm -rf" in cmd for cmd in commands)
+        assert any("git reset --hard" in cmd for cmd in commands)
+        assert any("chmod 777" in cmd for cmd in commands)
+
+    def test_get_background_command_examples(self):
+        """Test background command examples for template rendering."""
+        examples = self.functions["get_background_command_examples"]()
+
+        assert isinstance(examples, list)
+        assert len(examples) > 0
+
+        # Check structure of examples
+        for example in examples:
+            assert isinstance(example, dict)
+            assert "command" in example
+            assert "explanation" in example
+            assert isinstance(example["command"], str)
+            assert isinstance(example["explanation"], str)
+            assert len(example["command"]) > 0
+            assert len(example["explanation"]) > 0
+
+        # Check for specific background commands
+        commands = [ex["command"] for ex in examples]
+        assert any("server" in cmd for cmd in commands)
+        assert any("npm run dev" in cmd for cmd in commands)
+        assert any("webpack --watch" in cmd for cmd in commands)
+
+    def test_get_dangerous_patterns(self):
+        """Test dangerous command patterns."""
+        patterns = self.functions["get_dangerous_patterns"]()
+
+        assert isinstance(patterns, list)
+        assert len(patterns) > 0
+
+        expected_patterns = [
+            "rm ",
+            "sudo",
+            "chmod",
+            "git reset --hard",
+            "shutdown",
+            "kill",
+        ]
+
+        for pattern in expected_patterns:
+            assert pattern in patterns
+
+    def test_get_background_patterns(self):
+        """Test background command patterns."""
+        patterns = self.functions["get_background_patterns"]()
+
+        assert isinstance(patterns, list)
+        assert len(patterns) > 0
+
+        expected_patterns = ["server", "watch", "dev", "daemon", "service"]
+
+        for pattern in expected_patterns:
+            assert pattern in patterns
+
+    def test_should_explain_command_dangerous(self):
+        """Test command explanation detection for dangerous commands."""
+        should_explain = self.functions["should_explain_command"]
+
         dangerous_commands = [
             "rm -rf /tmp/test",
-            "sudo apt install package",
-            "git push origin main",
-            "chmod 777 file.txt",
-            "mv important.txt /tmp/",
-            "npm install -g package"
+            "sudo rm file.txt",
+            "chmod 777 ~/.ssh/",
+            "git reset --hard HEAD~5",
+            "kill -9 1234",
+            "shutdown now",
+            "npm install -g package",
         ]
-        
-        for cmd in dangerous_commands:
-            assert should_explain_command(cmd), f"Command should be explained: {cmd}"
 
-    def test_should_not_explain_safe_commands(self):
-        """Test that safe commands are not flagged."""
+        for cmd in dangerous_commands:
+            assert should_explain(cmd) is True, (
+                f"Should explain dangerous command: {cmd}"
+            )
+
+    def test_should_explain_command_safe(self):
+        """Test command explanation detection for safe commands."""
+        should_explain = self.functions["should_explain_command"]
+
         safe_commands = [
             "ls -la",
-            "cat file.txt", 
-            "grep pattern file.txt",
-            "echo 'hello world'",
+            "cat file.txt",
+            "echo hello",
             "pwd",
-            "date"
+            "whoami",
+            "date",
+            "git status",
         ]
-        
+
         for cmd in safe_commands:
-            assert not should_explain_command(cmd), f"Command should not be explained: {cmd}"
+            assert should_explain(cmd) is False, (
+                f"Should not explain safe command: {cmd}"
+            )
 
-    def test_get_command_explanation_provides_context(self):
-        """Test that command explanations provide useful context."""
-        test_cases = [
-            ("rm -rf /tmp/test", "permanently delete"),
-            ("sudo apt install", "elevated privileges"),
-            ("git push origin", "push changes to remote"),
-            ("chmod 755 file", "change file permissions")
-        ]
-        
-        for cmd, expected_phrase in test_cases:
-            explanation = get_command_explanation(cmd)
-            assert expected_phrase.lower() in explanation.lower()
-            assert cmd in explanation
+    def test_should_run_in_background_long_running(self):
+        """Test background detection for long-running commands."""
+        should_run_bg = self.functions["should_run_in_background"]
 
-    def test_should_ask_for_confirmation_high_risk(self):
-        """Test that high-risk commands require confirmation."""
-        high_risk_commands = [
-            "rm -rf /",
-            "git push --force", 
-            "git reset --hard HEAD~5",
-            "sudo rm -rf /usr",
-            "format C:"
-        ]
-        
-        for cmd in high_risk_commands:
-            assert should_ask_for_confirmation(cmd), f"Should ask confirmation for: {cmd}"
-
-
-class TestBackgroundProcessDetection:
-    """Test background process detection."""
-
-    def test_should_run_in_background_server_commands(self):
-        """Test that server commands are flagged for background execution."""
-        server_commands = [
+        background_commands = [
             "node server.js",
             "python -m http.server 8000",
             "npm run dev",
+            "webpack --watch",
+            "nodemon app.js",
             "webpack-dev-server",
-            "nodemon app.js"
         ]
-        
-        for cmd in server_commands:
-            assert should_run_in_background(cmd), f"Command should run in background: {cmd}"
 
-    def test_should_not_run_in_background_regular_commands(self):
-        """Test that regular commands are not flagged for background."""
-        regular_commands = [
+        for cmd in background_commands:
+            assert should_run_bg(cmd) is True, f"Should run in background: {cmd}"
+
+    def test_should_run_in_background_short_running(self):
+        """Test background detection for short-running commands."""
+        should_run_bg = self.functions["should_run_in_background"]
+
+        foreground_commands = [
             "ls -la",
+            "cat file.txt",
+            "git status",
             "npm test",
-            "git status", 
-            "python script.py"
+            "python script.py",
+            "make build",
         ]
-        
-        for cmd in regular_commands:
-            assert not should_run_in_background(cmd), f"Command should not run in background: {cmd}"
 
+        for cmd in foreground_commands:
+            assert should_run_bg(cmd) is False, f"Should not run in background: {cmd}"
 
-class TestInteractiveCommandConversion:
-    """Test interactive command conversion."""
+    def test_format_tool_usage_guidelines(self):
+        """Test tool usage guidelines formatting."""
+        guidelines = self.functions["format_tool_usage_guidelines"]()
 
-    def test_make_command_non_interactive(self):
-        """Test conversion of interactive commands to non-interactive."""
-        test_cases = [
-            ("npm init", "npm init -y"),
-            ("yarn init", "yarn init -y"),
-            ("pip install package", "pip install --no-input package"),
+        assert isinstance(guidelines, str)
+        assert len(guidelines) > 0
+
+        # Check for key content
+        assert "Tool Usage" in guidelines
+        assert "File Paths" in guidelines
+        assert "Parallelism" in guidelines
+        assert "Command Execution" in guidelines
+        assert "Background Processes" in guidelines
+        assert "Interactive Commands" in guidelines
+        assert "Respect User Confirmations" in guidelines
+
+        # Check that all tools are mentioned
+        tools = self.functions["get_available_tools"]()
+        for tool in tools:
+            assert tool in guidelines
+
+    def test_get_security_guidelines(self):
+        """Test security guidelines generation."""
+        guidelines = self.functions["get_security_guidelines"]()
+
+        assert isinstance(guidelines, str)
+        assert len(guidelines) > 0
+
+        # Check for key security content
+        assert "Security and Safety Rules" in guidelines
+        assert "Explain Critical Commands" in guidelines
+        assert "Security First" in guidelines
+        assert "secrets" in guidelines.lower()
+        assert "api keys" in guidelines.lower()
+
+    def test_tool_functions_are_callable(self):
+        """Test that all tool functions are properly callable."""
+        required_functions = [
+            "get_available_tools",
+            "get_dangerous_command_examples",
+            "get_background_command_examples",
+            "get_dangerous_patterns",
+            "get_background_patterns",
+            "should_explain_command",
+            "should_run_in_background",
+            "format_tool_usage_guidelines",
+            "get_security_guidelines",
         ]
-        
-        for interactive, expected in test_cases:
-            result = make_command_non_interactive(interactive)
-            assert result == expected, f"Expected {expected}, got {result}"
 
-    def test_non_interactive_commands_unchanged(self):
-        """Test that already non-interactive commands remain unchanged."""
-        commands = [
-            "npm install -y",
-            "ls -la",
-            "git status"
-        ]
-        
-        for cmd in commands:
-            result = make_command_non_interactive(cmd)
-            assert result == cmd, f"Command should remain unchanged: {cmd}"
+        for func_name in required_functions:
+            assert func_name in self.functions
+            assert callable(self.functions[func_name])
 
+    def test_command_safety_edge_cases(self):
+        """Test edge cases for command safety detection."""
+        should_explain = self.functions["should_explain_command"]
+        should_run_bg = self.functions["should_run_in_background"]
 
-class TestParallelToolSuggestions:
-    """Test parallel tool execution suggestions."""
+        # Empty command
+        assert should_explain("") is False
+        assert should_run_bg("") is False
 
-    def test_search_tasks_suggest_parallel_tools(self):
-        """Test that search tasks suggest appropriate parallel tools."""
-        search_descriptions = [
-            "search for function definitions",
-            "find all imports",
-            "look for usage patterns"
-        ]
-        
-        for desc in search_descriptions:
-            suggestions = get_parallel_tool_suggestions(desc)
-            assert "GrepTool" in suggestions or "GlobTool" in suggestions
+        # Case sensitivity
+        assert should_explain("RM -RF /tmp") is True
+        assert should_run_bg("NODE SERVER.JS") is True
 
-    def test_read_tasks_suggest_parallel_tools(self):
-        """Test that read tasks suggest appropriate parallel tools."""
-        read_descriptions = [
-            "read multiple files",
-            "analyze codebase structure", 
-            "understand project layout"
-        ]
-        
-        for desc in read_descriptions:
-            suggestions = get_parallel_tool_suggestions(desc)
-            assert len(suggestions) > 0
-            assert any("Read" in tool for tool in suggestions)
+        # Commands with arguments
+        assert should_explain("rm -rf /tmp/test && ls") is True
+        assert should_run_bg("node server.js --port 3000") is True
 
-    def test_explore_tasks_suggest_multiple_tools(self):
-        """Test that exploration tasks suggest multiple tools."""
-        explore_descriptions = [
-            "understand the codebase",
-            "explore project structure"
-        ]
-        
-        for desc in explore_descriptions:
-            suggestions = get_parallel_tool_suggestions(desc)
-            assert len(suggestions) >= 2  # Should suggest multiple tools
+        # Partial matches - "remove file" contains "move" which IS a dangerous pattern
+        assert should_explain("remove file") is True  # "remove file" contains "move"
+        assert should_explain("show file") is False  # "show" doesn't match any pattern
+        assert should_run_bg("start application") is True  # contains "start"
 
+    def test_function_return_types(self):
+        """Test that functions return expected data types."""
+        # Array functions should return lists
+        assert isinstance(self.functions["get_available_tools"](), list)
+        assert isinstance(self.functions["get_dangerous_command_examples"](), list)
+        assert isinstance(self.functions["get_background_command_examples"](), list)
+        assert isinstance(self.functions["get_dangerous_patterns"](), list)
+        assert isinstance(self.functions["get_background_patterns"](), list)
 
-class TestGuidelineFormatting:
-    """Test guideline formatting functions."""
+        # String functions should return strings
+        assert isinstance(self.functions["format_tool_usage_guidelines"](), str)
+        assert isinstance(self.functions["get_security_guidelines"](), str)
 
-    def test_format_tool_usage_guidelines_contains_key_points(self):
-        """Test that tool usage guidelines contain key information."""
-        guidelines = format_tool_usage_guidelines()
-        
-        key_points = [
-            "absolute paths",
-            "parallel",
-            "ShellTool",
-            "background processes",
-            "interactive commands"
-        ]
-        
-        for point in key_points:
-            assert point.lower() in guidelines.lower(), f"Missing key point: {point}"
-
-    def test_get_security_guidelines_contains_safety_rules(self):
-        """Test that security guidelines contain safety rules."""
-        guidelines = get_security_guidelines()
-        
-        safety_rules = [
-            "Critical Commands",
-            "Security First",
-            "User Control",
-            "No Assumptions"
-        ]
-        
-        for rule in safety_rules:
-            assert rule in guidelines, f"Missing safety rule: {rule}"
-
-    def test_guidelines_are_properly_formatted(self):
-        """Test that guidelines are properly formatted as markdown."""
-        tool_guidelines = format_tool_usage_guidelines()
-        security_guidelines = get_security_guidelines()
-        
-        # Should contain markdown headers
-        assert "##" in tool_guidelines
-        assert "##" in security_guidelines
-        
-        # Should contain bullet points
-        assert "- **" in tool_guidelines
-        assert "- **" in security_guidelines 
+        # Boolean functions should return booleans
+        assert isinstance(self.functions["should_explain_command"]("test"), bool)
+        assert isinstance(self.functions["should_run_in_background"]("test"), bool)

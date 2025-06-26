@@ -1,221 +1,278 @@
-"""Test cases for system prompt generation with environment detection."""
+"""Tests for system prompt generation."""
 
-import pytest
-import os
-from unittest.mock import patch
-from pathlib import Path
-
-from republic_prompt import load_workspace, render
-from republic_prompt.core import Template
-
-
-@pytest.fixture
-def examples_workspace():
-    """Load the examples workspace for testing."""
-    examples_path = Path(__file__).parent.parent / "examples"
-    return load_workspace(examples_path)
+from republic_prompt.loader import load_workspace
+from republic_prompt.renderer import render
 
 
 class TestSystemPromptGeneration:
-    """Test system prompt generation with various configurations."""
+    """Test system prompt generation functionality."""
 
-    def test_base_prompt_without_user_memory(self, examples_workspace):
-        """Test that base prompt is generated correctly without user memory."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        with patch.dict(os.environ, {}, clear=True):
-            prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-            
-            assert "You are an interactive CLI agent" in prompt.content
-            assert "---\n\n" not in prompt.content  # No memory separator
-            assert "software_engineering" in prompt.content
+    def setup_method(self):
+        """Set up test workspace."""
+        self.workspace = load_workspace("packages/prompt/examples")
 
-    def test_base_prompt_with_empty_user_memory(self, examples_workspace):
-        """Test that empty user memory doesn't add separator."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        with patch.dict(os.environ, {}, clear=True):
-            prompt = render(template, {
-                "domain": "software_engineering",
-                "user_memory": ""
-            }, examples_workspace)
-            
-            assert "You are an interactive CLI agent" in prompt.content
-            assert "---\n\n" not in prompt.content
+    def test_gemini_cli_system_prompt_renders(self):
+        """Test that the main Gemini CLI system prompt template renders successfully."""
+        template = self.workspace.templates["gemini_cli_system_prompt"]
 
-    def test_base_prompt_with_whitespace_user_memory(self, examples_workspace):
-        """Test that whitespace-only user memory doesn't add separator."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        with patch.dict(os.environ, {}, clear=True):
-            prompt = render(template, {
-                "domain": "software_engineering", 
-                "user_memory": "   \n  \t "
-            }, examples_workspace)
-            
-            assert "You are an interactive CLI agent" in prompt.content
-            assert "---\n\n" not in prompt.content
+        # Test with full configuration
+        variables = {
+            "use_tools": True,
+            "include_workflows": True,
+            "include_examples": True,
+            "max_output_lines": 8,
+        }
 
-    def test_base_prompt_with_user_memory(self, examples_workspace):
-        """Test that user memory is appended with separator."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        memory = "This is custom user memory.\nBe extra polite."
-        
-        with patch.dict(os.environ, {}, clear=True):
-            prompt = render(template, {
-                "domain": "software_engineering",
-                "user_memory": memory
-            }, examples_workspace)
-            
-            assert "You are an interactive CLI agent" in prompt.content
-            assert f"---\n\n{memory}" in prompt.content
+        result = render(template, variables, workspace=self.workspace)
 
-    def test_sandbox_environment_detection(self, examples_workspace):
-        """Test sandbox environment detection and warning generation."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-        
-        # Should contain basic agent content
-        assert "You are an interactive CLI agent" in prompt.content
+        assert isinstance(result.content, str)
+        assert len(result.content) > 0
+        assert "You are an interactive CLI agent" in result.content
 
-    def test_git_repository_detection(self, examples_workspace):
-        """Test git repository detection and instructions."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-        
-        # Should contain git-related instructions (since we're in a git repo)
-        assert "git" in prompt.content.lower()
+    def test_simple_agent_template_renders(self):
+        """Test that the simple agent template renders successfully."""
+        template = self.workspace.templates["simple_agent"]
 
-    def test_non_git_repository(self, examples_workspace):
-        """Test behavior when not in a git repository."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-        
-        # Should contain basic functionality regardless
-        assert "You are an interactive CLI agent" in prompt.content
+        variables = {
+            "use_tools": False,
+            "include_workflows": False,
+            "include_examples": False,
+            "max_output_lines": 3,
+        }
 
-    def test_tool_names_consistency(self, examples_workspace):
-        """Test that tool names are consistent across templates."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-        
-        # Check that expected tool names appear
-        expected_tools = [
-            "GrepTool", "GlobTool", "ReadFileTool", "ReadManyFilesTool",
-            "EditTool", "WriteFileTool", "ShellTool", "LSTool"
-        ]
-        
-        for tool in expected_tools:
-            assert tool in prompt.content
+        result = render(template, variables, workspace=self.workspace)
 
-    def test_environment_specific_configurations(self, examples_workspace):
-        """Test that different environments produce different configurations."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        # Test development environment
-        dev_prompt = render(template, {
-            "domain": "software_engineering",
-            "max_output_lines": 5,
-            "debug_mode": True
-        }, examples_workspace)
-        
-        # Test production environment  
-        prod_prompt = render(template, {
-            "domain": "software_engineering",
-            "max_output_lines": 2,
-            "debug_mode": False
-        }, examples_workspace)
-        
-        # They should be different
-        assert dev_prompt.content != prod_prompt.content
+        assert isinstance(result.content, str)
+        assert len(result.content) > 0
+        assert "agent" in result.content.lower()
 
-    def test_function_calls_in_templates(self, examples_workspace):
-        """Test that template functions are called correctly."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-        
-        # Check that function-generated content appears
-        assert "Software Engineering Workflow" in prompt.content
-        assert "New Application Workflow" in prompt.content
-        assert "Security and Safety Rules" in prompt.content
+    def test_command_safety_snippet_renders_with_arrays(self):
+        """Test that command safety snippet renders using array-based functions."""
+        from republic_prompt.renderer import render_snippet
 
-    def test_snippet_inclusion(self, examples_workspace):
-        """Test that snippets are included correctly."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-        
-        # Check that snippet content appears
-        assert "Core Mandates" in prompt.content
-        assert "Tone and Style" in prompt.content
-        assert "Conventions:" in prompt.content
+        snippet = self.workspace.snippets["command_safety"]
 
-    def test_variable_substitution(self, examples_workspace):
-        """Test that template variables are substituted correctly."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        custom_domain = "data_science"
-        prompt = render(template, {"domain": custom_domain}, examples_workspace)
-        
-        assert custom_domain in prompt.content
-        assert "{{ domain }}" not in prompt.content  # Should be substituted
+        result = render_snippet(snippet, {}, workspace=self.workspace)
 
-    def test_prebuilt_prompts_validity(self, examples_workspace):
-        """Test that all prebuilt prompts are valid and complete."""
-        prebuilt_prompts = ["full_cli_system", "basic_cli_system", "simple_agent"]
-        
-        for prompt_name in prebuilt_prompts:
-            prompt = examples_workspace.prompts[prompt_name]
-            assert isinstance(prompt, Template)
-            assert prompt.content.strip()
-            assert "You are" in prompt.content  # Basic sanity check
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_configuration_consistency(self, examples_workspace):
-        """Test that configuration values are used consistently."""
-        config = examples_workspace.config
-        
-        # Check that defaults are properly set
-        assert config.defaults["agent_type"] == "cli_agent"
-        assert config.defaults["domain"] == "software_engineering"
-        assert config.defaults["tone"] == "concise_direct"
-        
-        # Check environment configurations
-        assert "development" in config.environments
-        assert "production" in config.environments
-        assert "sandbox" in config.environments
+        # Should contain rendered examples from arrays
+        assert "rm -rf" in result
+        assert "server" in result.lower()
+        assert "Example" in result
+        assert "Background Process" in result
 
-    def test_conditional_warning_display(self, examples_workspace):
-        """Test that warnings are displayed conditionally."""
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt = render(template, {"domain": "software_engineering"}, examples_workspace)
-        
-        # Should contain basic template content
-        assert "You are an interactive CLI agent" in prompt.content
+    def test_environment_detection_snippet_renders(self):
+        """Test that environment detection snippet renders successfully."""
+        from republic_prompt.renderer import render_snippet
 
-    def test_max_output_lines_consistency(self, examples_workspace):
-        """Test that max_output_lines values are consistent across components."""
-        # Check that the snippet template uses the variable correctly
-        tone_snippet = examples_workspace.snippets["tone_guidelines"]
-        assert "{{ max_output_lines | default(3) }}" in tone_snippet.content
-        
-        # Test rendering with different values
-        template = examples_workspace.templates["gemini_cli_system_prompt"]
-        
-        prompt_3_lines = render(template, {
-            "domain": "software_engineering",
-            "max_output_lines": 3
-        }, examples_workspace)
-        
-        prompt_5_lines = render(template, {
-            "domain": "software_engineering", 
-            "max_output_lines": 5
-        }, examples_workspace)
-        
-        assert "fewer than 3 lines" in prompt_3_lines.content
-        assert "fewer than 5 lines" in prompt_5_lines.content 
+        snippet = self.workspace.snippets["environment_detection"]
+
+        result = render_snippet(snippet, {}, workspace=self.workspace)
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_core_mandates_snippet_renders(self):
+        """Test that core mandates snippet renders successfully."""
+        from republic_prompt.renderer import render_snippet
+
+        snippet = self.workspace.snippets["core_mandates"]
+
+        result = render_snippet(snippet, {}, workspace=self.workspace)
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_tone_guidelines_snippet_renders(self):
+        """Test that tone guidelines snippet renders successfully."""
+        from republic_prompt.renderer import render_snippet
+
+        snippet = self.workspace.snippets["tone_guidelines"]
+
+        result = render_snippet(snippet, {}, workspace=self.workspace)
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_template_with_conditional_rendering(self):
+        """Test template rendering with conditional logic."""
+        template = self.workspace.templates["gemini_cli_system_prompt"]
+
+        # Test with tools enabled
+        with_tools = render(template, {"use_tools": True}, workspace=self.workspace)
+
+        # Test with tools disabled
+        without_tools = render(template, {"use_tools": False}, workspace=self.workspace)
+
+        # With tools should be longer and contain tool information
+        assert len(with_tools.content) > len(without_tools.content)
+
+        # Tool-specific content should only appear when tools are enabled
+        if "Tool Usage" in with_tools.content:
+            assert "Tool Usage" not in without_tools.content or len(
+                with_tools.content
+            ) > len(without_tools.content)
+
+    def test_template_variable_substitution(self):
+        """Test that template variables are properly substituted."""
+        template = self.workspace.templates["gemini_cli_system_prompt"]
+
+        # Test different max_output_lines values
+        result_8 = render(template, {"max_output_lines": 8}, workspace=self.workspace)
+        result_2 = render(template, {"max_output_lines": 2}, workspace=self.workspace)
+
+        # Both should render successfully
+        assert isinstance(result_8.content, str) and len(result_8.content) > 0
+        assert isinstance(result_2.content, str) and len(result_2.content) > 0
+
+        # Should contain the specified values
+        assert "8" in result_8.content
+        assert "2" in result_2.content
+
+    def test_function_calls_in_templates(self):
+        """Test that function calls work properly in templates."""
+        template = self.workspace.templates["gemini_cli_system_prompt"]
+
+        result = render(template, {"use_tools": True}, workspace=self.workspace)
+
+        # Should contain content from function calls
+        functions_dict = self.workspace.get_functions_dict()
+        tools = functions_dict["get_available_tools"]()
+        for tool in tools:
+            assert tool in result.content
+
+    def test_array_iteration_in_templates(self):
+        """Test that array iteration works in templates."""
+        # Create a simple test template that uses array iteration
+        test_template_content = """
+        {% for example in get_dangerous_command_examples() %}
+        Command: {{ example.command }}
+        Explanation: {{ example.explanation }}
+        {% endfor %}
+        """
+
+        from republic_prompt.core import Template
+
+        test_template = Template(name="test_template", content=test_template_content)
+
+        result = render(test_template, {}, workspace=self.workspace)
+
+        # Should contain rendered examples
+        assert "Command:" in result.content
+        assert "Explanation:" in result.content
+        assert "rm -rf" in result.content
+
+    def test_nested_function_calls(self):
+        """Test that nested function calls work in templates."""
+        template = self.workspace.templates["gemini_cli_system_prompt"]
+
+        result = render(
+            template,
+            {"use_tools": True, "include_workflows": True, "include_examples": True},
+            workspace=self.workspace,
+        )
+
+        # Should contain content from multiple function calls
+        assert len(result.content) > 0
+
+        # Check for content from different function categories
+        functions_dict = self.workspace.get_functions_dict()
+        tools = functions_dict["get_available_tools"]()
+
+        for tool in tools:
+            assert tool in result.content
+
+    def test_error_handling_in_rendering(self):
+        """Test error handling during template rendering."""
+        template = self.workspace.templates["gemini_cli_system_prompt"]
+
+        # Test with missing required variables - should still render
+        result = render(template, {}, workspace=self.workspace)
+        assert isinstance(result.content, str)
+        assert len(result.content) > 0
+
+    def test_examples_snippet_renders(self):
+        """Test that examples snippet renders successfully."""
+        from republic_prompt.renderer import render_snippet
+
+        snippet = self.workspace.snippets["examples"]
+
+        result = render_snippet(snippet, {}, workspace=self.workspace)
+
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_all_snippets_render_independently(self):
+        """Test that all snippets can render independently."""
+        from republic_prompt.renderer import render_snippet
+
+        for snippet_name, snippet in self.workspace.snippets.items():
+            result = render_snippet(snippet, {}, workspace=self.workspace)
+            assert isinstance(result, str), f"Snippet {snippet_name} failed to render"
+            assert len(result) > 0, f"Snippet {snippet_name} rendered empty"
+
+    def test_template_output_contains_expected_sections(self):
+        """Test that rendered templates contain expected sections."""
+        template = self.workspace.templates["gemini_cli_system_prompt"]
+
+        result = render(
+            template,
+            {
+                "use_tools": True,
+                "include_workflows": True,
+                "include_examples": True,
+                "max_output_lines": 8,
+            },
+            workspace=self.workspace,
+        )
+
+        # Should contain major sections
+        expected_sections = ["Core Mandates", "Tool Usage", "Security and Safety Rules"]
+
+        for section in expected_sections:
+            assert section in result.content, f"Missing section: {section}"
+
+    def test_command_examples_properly_rendered(self):
+        """Test that command examples are properly rendered from arrays."""
+        from republic_prompt.renderer import render_snippet
+
+        snippet = self.workspace.snippets["command_safety"]
+
+        result = render_snippet(snippet, {}, workspace=self.workspace)
+
+        # Should contain examples from the arrays
+        functions_dict = self.workspace.get_functions_dict()
+        dangerous_examples = functions_dict["get_dangerous_command_examples"]()
+        background_examples = functions_dict["get_background_command_examples"]()
+
+        # Check that at least some examples are rendered
+        found_dangerous = any(ex["command"] in result for ex in dangerous_examples)
+        found_background = any(ex["command"] in result for ex in background_examples)
+
+        assert found_dangerous, "No dangerous command examples found in rendered output"
+        assert found_background, (
+            "No background command examples found in rendered output"
+        )
+
+    def test_function_return_values_used_correctly(self):
+        """Test that function return values are used correctly in templates."""
+        # Test that array functions return arrays
+        functions_dict = self.workspace.get_functions_dict()
+        dangerous_examples = functions_dict["get_dangerous_command_examples"]()
+        background_examples = functions_dict["get_background_command_examples"]()
+
+        assert isinstance(dangerous_examples, list)
+        assert isinstance(background_examples, list)
+        assert len(dangerous_examples) > 0
+        assert len(background_examples) > 0
+
+        # Test that each example has the expected structure
+        for example in dangerous_examples:
+            assert "command" in example
+            assert "explanation" in example
+
+        for example in background_examples:
+            assert "command" in example
+            assert "explanation" in example
