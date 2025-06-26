@@ -10,14 +10,13 @@ def get_available_tools() -> List[str]:
     """
     return [
         "LSTool",
-        "EditTool",
+        "EditTool", 
         "GlobTool",
         "GrepTool",
         "ReadFileTool",
         "ReadManyFilesTool",
         "ShellTool",
         "WriteFileTool",
-        "MemoryTool",
     ]
 
 
@@ -130,17 +129,21 @@ def get_parallel_tool_suggestions(task_description: str) -> List[str]:
     Suggest tools that can be run in parallel for a given task.
     Based on Google's parallelism guidelines.
     """
-    if "search" in task_description.lower() or "find" in task_description.lower():
+    task_lower = task_description.lower()
+    
+    if "search" in task_lower or "find" in task_lower:
         return ["GrepTool", "GlobTool"]
 
-    if "read" in task_description.lower() or "analyze" in task_description.lower():
+    if "read" in task_lower or "analyze" in task_lower:
         return ["ReadFileTool", "ReadManyFilesTool"]
 
-    if (
-        "understand" in task_description.lower()
-        or "explore" in task_description.lower()
-    ):
+    if "understand" in task_lower or "explore" in task_lower:
         return ["GrepTool", "GlobTool", "ReadFileTool"]
+
+    # Check for specific keywords that suggest parallel operations
+    parallel_keywords = ["definitions", "imports", "patterns", "usage", "multiple", "structure", "layout"]
+    if any(keyword in task_lower for keyword in parallel_keywords):
+        return ["GrepTool", "GlobTool"]
 
     return []
 
@@ -188,7 +191,7 @@ def should_ask_for_confirmation(command: str) -> bool:
         "format",
         "fdisk",
         "git push --force",
-        "git reset --hard HEAD~",
+        "git reset --hard",
         "sudo rm",
         "sudo chmod",
         "npm uninstall -g",

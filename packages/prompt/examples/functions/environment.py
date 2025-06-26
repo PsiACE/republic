@@ -198,8 +198,8 @@ def should_show_git_warning() -> bool:
     """
     git_info = detect_git_repository()
 
-    # Show warning if in git repo with uncommitted changes
-    return git_info["is_git_repo"] and git_info["has_uncommitted_changes"]
+    # Show warning if in git repo (regardless of uncommitted changes)
+    return git_info["is_git_repo"]
 
 
 def should_show_sandbox_warning() -> bool:
@@ -208,16 +208,8 @@ def should_show_sandbox_warning() -> bool:
     """
     sandbox_info = detect_sandbox_environment()
 
-    # Show warning if sandboxed with significant restrictions
-    if not sandbox_info["is_sandboxed"]:
-        return False
-
-    significant_restrictions = ["file_system", "network", "process_creation"]
-
-    return any(
-        restriction in sandbox_info["restrictions"]
-        for restriction in significant_restrictions
-    )
+    # Show warning if sandboxed
+    return sandbox_info["is_sandboxed"]
 
 
 def get_sandbox_warning_message() -> str:
@@ -275,5 +267,9 @@ WORKSPACE_FUNCTIONS = {
     "get_sandbox_status": lambda: detect_sandbox_environment()["sandbox_type"]
     or "no_sandbox",
     "is_git_repository": lambda: detect_git_repository()["is_git_repo"],
-    "get_git_workflow_instructions": lambda: "Always check git status before making changes\n- Create feature branches for new work\n- Write clear, descriptive commit messages\n- Consider running tests before committing\n- Use `git stash` to temporarily save work",
+    "get_git_workflow_instructions": lambda: """Always check git status before making changes
+- Create feature branches for new work
+- Write clear, descriptive commit messages
+- Consider running tests before committing
+- Use `git stash` to temporarily save work""",
 }

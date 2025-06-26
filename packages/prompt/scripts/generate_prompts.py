@@ -30,59 +30,65 @@ def clear_prompts_directory(prompts_dir: Path) -> None:
 
 
 def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, str]:
-    """Generate the 3 core prompt variants."""
+    """Generate the 3 core prompt variants with distinct differences."""
 
     variants = {}
 
-    # 1. Full CLI System with functions (development environment)
+    # 1. Full CLI System - Comprehensive development-focused agent
     if "gemini_cli_system_prompt" in workspace.templates:
         template = workspace.templates["gemini_cli_system_prompt"]
         full_config = {
             **base_config,
             **workspace.config.environments.get("development", {}),
             "domain": "software_engineering",
-            "agent_type": "cli_agent",
-            "tone": "professional_comprehensive",
-            "max_output_lines": 5,
+            "agent_type": "comprehensive_cli_agent",
+            "tone": "detailed_professional",
+            "max_output_lines": 8,  # More verbose for development
             "debug_mode": True,
             "verbose_explanations": True,
+            "show_tool_reasoning": True,
             "use_tools": True,
             "explain_critical_commands": True,
+            "safety_first": True,
+            "include_examples": True,
+            "include_workflows": True,
         }
 
         try:
             prompt = render(template, full_config, workspace)
             variants["full_cli_system"] = prompt.content
-            print(
-                "Generated: full_cli_system.md (comprehensive CLI system with functions)"
-            )
+            print("Generated: full_cli_system.md (comprehensive development CLI system)")
         except Exception as e:
             print(f"Error generating full CLI system: {e}")
 
-    # 2. Basic CLI System (production environment, minimal)
+    # 2. Basic CLI System - Production-ready, minimal but functional
     if "gemini_cli_system_prompt" in workspace.templates:
         template = workspace.templates["gemini_cli_system_prompt"]
         basic_config = {
             **base_config,
             **workspace.config.environments.get("production", {}),
-            "domain": "general_assistance",
-            "agent_type": "basic_cli",
+            "domain": "general_assistance", 
+            "agent_type": "production_cli_agent",
             "tone": "concise_direct",
-            "max_output_lines": 3,
+            "max_output_lines": 2,  # Very concise for production
             "debug_mode": False,
             "verbose_explanations": False,
+            "show_tool_reasoning": False,
             "use_tools": True,
             "explain_critical_commands": True,
+            "safety_first": True,
+            "include_examples": False,  # Minimal examples
+            "include_workflows": True,  # Keep workflows but simplified
         }
 
         try:
             prompt = render(template, basic_config, workspace)
             variants["basic_cli_system"] = prompt.content
-            print("Generated: basic_cli_system.md (basic CLI system)")
+            print("Generated: basic_cli_system.md (production-ready minimal CLI system)")
         except Exception as e:
             print(f"Error generating basic CLI system: {e}")
 
-    # 3. Simple Agent (lightweight)
+    # 3. Simple Agent - Lightweight general assistant
     if "simple_agent" in workspace.templates:
         template = workspace.templates["simple_agent"]
         simple_config = {
@@ -93,12 +99,18 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
             "max_output_lines": 3,
             "debug_mode": False,
             "verbose_explanations": False,
+            "show_tool_reasoning": False,
+            "use_tools": False,  # No complex tools
+            "explain_critical_commands": False,
+            "safety_first": False,
+            "include_examples": False,
+            "include_workflows": False,
         }
 
         try:
             prompt = render(template, simple_config, workspace)
             variants["simple_agent"] = prompt.content
-            print("Generated: simple_agent.md (lightweight simple agent)")
+            print("Generated: simple_agent.md (lightweight general assistant)")
         except Exception as e:
             print(f"Error generating simple agent: {e}")
 

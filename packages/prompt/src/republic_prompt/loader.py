@@ -332,13 +332,17 @@ def load_workspace(
                     template = load_template(template_file)
                     # Apply workspace defaults to template variables
                     defaults = workspace.config.defaults
+                    
+                    # Start with template variables, then apply defaults, then environment
+                    merged_vars = {**template.variables}
+                    merged_vars.update(defaults)
 
-                    # Apply environment-specific settings if specified
+                    # Apply environment-specific settings if specified (highest precedence)
                     if environment and environment in workspace.config.environments:
                         env_config = workspace.config.environments[environment]
-                        defaults = {**defaults, **env_config}
+                        merged_vars.update(env_config)
 
-                    template.variables = {**defaults, **template.variables}
+                    template.variables = merged_vars
                     workspace.templates[template.name] = template
                 except LoaderError as e:
                     logger.warning(f"Failed to load template {template_file}: {e}")
@@ -349,15 +353,19 @@ def load_workspace(
             for prompt_file in prompts_dir.glob("*.md"):
                 try:
                     template = load_template(prompt_file)
-                    # Apply workspace defaults
+                    # Apply workspace defaults to prompt variables
                     defaults = workspace.config.defaults
+                    
+                    # Start with template variables, then apply defaults, then environment
+                    merged_vars = {**template.variables}
+                    merged_vars.update(defaults)
 
-                    # Apply environment-specific settings if specified
+                    # Apply environment-specific settings if specified (highest precedence)
                     if environment and environment in workspace.config.environments:
                         env_config = workspace.config.environments[environment]
-                        defaults = {**defaults, **env_config}
+                        merged_vars.update(env_config)
 
-                    template.variables = {**defaults, **template.variables}
+                    template.variables = merged_vars
                     workspace.prompts[template.name] = template
                 except LoaderError as e:
                     logger.warning(f"Failed to load prompt {prompt_file}: {e}")

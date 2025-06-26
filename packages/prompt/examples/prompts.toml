@@ -13,12 +13,15 @@ max_output_lines = 3
 use_tools = true
 explain_critical_commands = true
 
+# Template control
+include_workflows = true
+include_examples = true
+
 # Environment detection
 detect_sandbox = true
 detect_git = true
-use_memory = false
 
-# Tool preferences
+# Tool preferences (for future use)
 prefer_parallel_tools = true
 use_absolute_paths = true
 background_long_processes = true
@@ -29,8 +32,10 @@ background_long_processes = true
 debug_mode = true
 verbose_explanations = true
 show_tool_reasoning = true
-max_output_lines = 5
-sandbox_warnings = true
+max_output_lines = 8
+include_workflows = true
+include_examples = true
+use_tools = true
 
 # Production environment - minimal output
 [prompts.environments.production]
@@ -38,12 +43,17 @@ debug_mode = false
 verbose_explanations = false
 show_tool_reasoning = false
 max_output_lines = 2
-sandbox_warnings = false
+include_workflows = true
+include_examples = false
+use_tools = true
 
 # Sandbox environment with safety focus
 [prompts.environments.sandbox]
 debug_mode = true
 verbose_explanations = true
 show_tool_reasoning = true
-sandbox_warnings = true
+max_output_lines = 5
+include_workflows = true
+include_examples = true
+use_tools = true
 safety_first = true 

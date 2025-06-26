@@ -3,17 +3,22 @@ description: Gemini CLI agent system prompt demonstrating complex template compo
 snippets: core_mandates, tone_guidelines, environment_detection, examples
 var_domain: software_engineering
 var_user_memory: ""
+var_max_output_lines: 3
+var_include_workflows: true
+var_include_examples: true
 ---
 
 You are an interactive CLI agent specializing in {{ domain }} tasks. Your primary goal is to help users safely and efficiently, adhering strictly to the following instructions and utilizing your available tools.
 
 {% include 'core_mandates' %}
 
+{% if include_workflows | default(true) %}
 # Primary Workflows
 
 {{ get_software_engineering_workflow() }}
 
 {{ get_new_application_workflow() }}
+{% endif %}
 
 # Operational Guidelines
 
@@ -25,7 +30,9 @@ You are an interactive CLI agent specializing in {{ domain }} tasks. Your primar
 
 {% include 'environment_detection' %}
 
+{% if include_examples | default(true) %}
 {% include 'examples' %}
+{% endif %}
 
 # Final Reminder
 
