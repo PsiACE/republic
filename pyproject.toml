@@ -1,6 +1,6 @@
 [project]
 name = "republic"
-version = "0.0.0"
+version = "0.1.0"
 description = "The minimalistic AI stack for developers who value freedom and efficiency."
 readme = "README.md"
 authors = [

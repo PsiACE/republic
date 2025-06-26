@@ -1,0 +1,49 @@
+[prompts]
+name = "gemini-cli-agent"
+description = "Gemini CLI agent workspace demonstrating complex system prompt management"
+version = "1.0.0"
+function_loaders = ["python"]
+
+[prompts.defaults]
+# Core system defaults
+agent_type = "cli_agent"
+domain = "software_engineering"
+tone = "concise_direct"
+max_output_lines = 3
+use_tools = true
+explain_critical_commands = true
+
+# Environment detection
+detect_sandbox = true
+detect_git = true
+use_memory = false
+
+# Tool preferences
+prefer_parallel_tools = true
+use_absolute_paths = true
+background_long_processes = true
+
+[prompts.environments]
+# Development environment with enhanced features
+[prompts.environments.development]
+debug_mode = true
+verbose_explanations = true
+show_tool_reasoning = true
+max_output_lines = 5
+sandbox_warnings = true
+
+# Production environment - minimal output
+[prompts.environments.production]
+debug_mode = false
+verbose_explanations = false
+show_tool_reasoning = false
+max_output_lines = 2
+sandbox_warnings = false
+
+# Sandbox environment with safety focus
+[prompts.environments.sandbox]
+debug_mode = true
+verbose_explanations = true
+show_tool_reasoning = true
+sandbox_warnings = true
+safety_first = true 
