@@ -19,13 +19,27 @@ all = [
 
 [dependency-groups]
 dev = [
-    "ruff >= 0.8.1",
-    "pytest >= 8.3.4",
     "republic[all]",
+]
+lint = [
+    "ruff >= 0.8.1",
+]
+test = [
+    "pytest >= 8.3.4",
+]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-terminal>=4.7.0",
+]
+doc = [
+    "mkdocs-simple-hooks>=0.1.5",
 ]
 
 [tool.uv.sources]
 republic-prompt = { workspace = true }
+
+[tool.uv]
+default-groups = ["dev", "lint", "test", "docs"]
 
 [tool.uv.workspace]
 members = ["packages/*"]

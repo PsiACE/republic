@@ -9,3 +9,10 @@ wheels/
 # Virtual environments
 .venv
 .python-version
+
+# editor files
+.vscode/
+.idea/
+.cursorrules
+.cursor/
+memory-bank/
