@@ -1,11 +1,11 @@
 ---
 description: Simplified agent template for comparison with Google's complex version
 snippets: core_mandates, tone_guidelines
-var_domain: general_assistance
-var_max_output_lines: 3
-var_use_tools: false
-var_include_workflows: false
-var_include_examples: false
+domain: general_assistance
+max_output_lines: 3
+use_tools: false
+include_workflows: false
+include_examples: false
 ---
 
 You are a helpful {{ domain }} agent.

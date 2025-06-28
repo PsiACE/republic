@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any
 import argparse
 
-from republic_prompt import load_workspace, render
+from republic_prompt import PromptWorkspace
 
 
 # Add src to path for imports
@@ -35,8 +35,7 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
     variants = {}
 
     # 1. Full CLI System - Comprehensive development-focused agent
-    if "gemini_cli_system_prompt" in workspace.templates:
-        template = workspace.templates["gemini_cli_system_prompt"]
+    if "gemini_cli_system_prompt" in workspace.list_templates():
         full_config = {
             **base_config,
             **workspace.config.environments.get("development", {}),
@@ -56,7 +55,7 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
         }
 
         try:
-            prompt = render(template, full_config, workspace)
+            prompt = workspace.render("gemini_cli_system_prompt", **full_config)
             variants["full_cli_system"] = prompt.content
             print(
                 "Generated: full_cli_system.md (comprehensive development CLI system)"
@@ -65,8 +64,7 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
             print(f"Error generating full CLI system: {e}")
 
     # 2. Basic CLI System - Production-ready, minimal but functional
-    if "gemini_cli_system_prompt" in workspace.templates:
-        template = workspace.templates["gemini_cli_system_prompt"]
+    if "gemini_cli_system_prompt" in workspace.list_templates():
         basic_config = {
             **base_config,
             **workspace.config.environments.get("production", {}),
@@ -86,7 +84,7 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
         }
 
         try:
-            prompt = render(template, basic_config, workspace)
+            prompt = workspace.render("gemini_cli_system_prompt", **basic_config)
             variants["basic_cli_system"] = prompt.content
             print(
                 "Generated: basic_cli_system.md (production-ready minimal CLI system)"
@@ -95,8 +93,7 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
             print(f"Error generating basic CLI system: {e}")
 
     # 3. Simple Agent - Lightweight general assistant
-    if "simple_agent" in workspace.templates:
-        template = workspace.templates["simple_agent"]
+    if "simple_agent" in workspace.list_templates():
         simple_config = {
             **base_config,
             "domain": "general_assistance",
@@ -114,7 +111,7 @@ def generate_core_prompts(workspace, base_config: Dict[str, Any]) -> Dict[str, s
         }
 
         try:
-            prompt = render(template, simple_config, workspace)
+            prompt = workspace.render("simple_agent", **simple_config)
             variants["simple_agent"] = prompt.content
             print("Generated: simple_agent.md (lightweight general assistant)")
         except Exception as e:
@@ -182,11 +179,11 @@ def main():
 
     try:
         # Load the examples workspace
-        workspace = load_workspace(str(examples_dir))
+        workspace = PromptWorkspace.load(examples_dir)
         print(f"Loaded workspace: {workspace.name}")
-        print(f"Available templates: {list(workspace.templates.keys())}")
-        print(f"Available snippets: {list(workspace.snippets.keys())}")
-        print(f"Available functions: {list(workspace.functions.keys())}")
+        print(f"Available templates: {workspace.list_templates()}")
+        print(f"Available snippets: {workspace.list_snippets()}")
+        print(f"Available functions: {workspace.list_functions()}")
 
     except Exception as e:
         print(f"Error loading workspace: {e}")
@@ -200,7 +197,7 @@ def main():
             clear_prompts_directory(prompts_dir)
 
     # Get base configuration
-    base_config = workspace.config.defaults.copy()
+    base_config = workspace.config.defaults.copy() if workspace.config.defaults else {}
 
     # Generate the 3 core prompt variants
     print("\nGenerating core prompt variants...")

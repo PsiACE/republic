@@ -1,20 +1,28 @@
 [project]
 name = "republic-prompt"
-version = "0.1.0"
-description = "Manage your prompts as recipes - lightweight and modern."
-readme = "README.md"
+version = "0.4.0"
+description = "Modern prompt engineering workspace library with clean architecture"
 authors = [
-    { name = "Chojan Shang", email = "psiace@apache.org" }
+    {name = "Psiace", email = "psiace@apache.org"}
 ]
+readme = "README.md"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
+keywords = ["prompt", "template", "ai", "llm", "jinja2", "workspace"]
+
 dependencies = [
     "jinja2 >= 3.1.0",
     "pydantic >= 2.0.0",
-    "toml >= 0.10.0",
+    "pydantic-settings >= 2.0.0",
+    "tomli >= 2.0.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest >= 8.0.0", "ruff >= 0.8.0"]
+dev = [
+    "pytest >= 7.0.0",
+    "ruff >= 0.1.0",
+]
 
 [build-system]
 requires = ["hatchling"]
