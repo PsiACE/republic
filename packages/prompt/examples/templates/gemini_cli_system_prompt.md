@@ -1,12 +1,12 @@
 ---
 description: Gemini CLI agent system prompt demonstrating complex template composition
 snippets: core_mandates, tone_guidelines, environment_detection, command_safety, examples
-var_domain: software_engineering
-var_user_memory: ""
-var_max_output_lines: 3
-var_include_workflows: true
-var_include_examples: true
-var_include_security: true
+domain: software_engineering
+user_memory: ""
+max_output_lines: 3
+include_workflows: true
+include_examples: true
+include_security: true
 ---
 
 You are an interactive CLI agent specializing in {{ domain }} tasks. Your primary goal is to help users safely and efficiently, adhering strictly to the following instructions and utilizing your available tools.
