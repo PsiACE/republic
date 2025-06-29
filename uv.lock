@@ -489,7 +489,7 @@ test = [{ name = "pytest", specifier = ">=8.3.4" }]
 
 [[package]]
 name = "republic-prompt"
-version = "0.4.0"
+version = "0.1.0"
 source = { editable = "packages/prompt" }
 dependencies = [
     { name = "jinja2" },

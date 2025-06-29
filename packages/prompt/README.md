@@ -23,6 +23,38 @@ pip install republic-prompt
 
 ## Quick Start
 
+### Option 1: Simple Template Formatting (90% of users)
+
+Just need to format template strings? Use the `format()` function - no setup required!
+
+```python
+from republic_prompt import format
+
+# Basic variable substitution
+result = format("Hello {{ name }}!", name="Alice")
+print(result)  # "Hello Alice!"
+
+# With custom functions
+def upper(text):
+    return text.upper()
+
+result = format(
+    "Hello {{ upper(name) }}!", 
+    custom_functions={"upper": upper},
+    name="Bob"
+)
+print(result)  # "Hello BOB!"
+
+# With conditional logic
+result = format(
+    "{% if count > 1 %}{{ count }} items{% else %}1 item{% endif %}",
+    count=3
+)
+print(result)  # "3 items"
+```
+
+### Option 2: Full Workspace (for complex projects)
+
 Forget about complex setup. Use `quick_render` to render templates from anywhere in just one line of code.
 
 ```python
