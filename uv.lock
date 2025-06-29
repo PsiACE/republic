@@ -456,11 +456,9 @@ prompt = [
 dev = [
     { name = "republic", extra = ["all"] },
 ]
-doc = [
-    { name = "mkdocs-simple-hooks" },
-]
 docs = [
     { name = "mkdocs" },
+    { name = "mkdocs-simple-hooks" },
     { name = "mkdocs-terminal" },
 ]
 lint = [
@@ -479,9 +477,9 @@ provides-extras = ["prompt", "all"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "republic", extras = ["all"] }]
-doc = [{ name = "mkdocs-simple-hooks", specifier = ">=0.1.5" }]
 docs = [
     { name = "mkdocs", specifier = ">=1.6.1" },
+    { name = "mkdocs-simple-hooks", specifier = ">=0.1.5" },
     { name = "mkdocs-terminal", specifier = ">=4.7.0" },
 ]
 lint = [{ name = "ruff", specifier = ">=0.8.1" }]
