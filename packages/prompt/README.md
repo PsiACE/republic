@@ -17,7 +17,7 @@ A modern, elegant, and extensible Python prompt engineering toolkit.
 # Use uv (recommended)
 uv pip install republic-prompt
 
-# 使用 pip
+# or use pip
 pip install republic-prompt
 ```
 
