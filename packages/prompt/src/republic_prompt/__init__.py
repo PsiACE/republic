@@ -22,5 +22,5 @@ Usage:
 from .workspace import PromptWorkspace, load_workspace, quick_render
 from .models import PromptModel, SnippetModel, TemplateModel
 
-__version__ = "0.4.0"
+__version__ = "0.1.0"
 __all__ = ["PromptWorkspace", "PromptModel", "SnippetModel", "TemplateModel", "load_workspace", "quick_render"] 
