@@ -16,13 +16,13 @@
 """
 
 from .interfaces import IWorkspace, ILoader, IRegistry
-from .workspace import Workspace
-from .loaders import ContentLoader, ConfigLoader
-from .registry import Registry
-from .config import WorkspaceConfig
+from .workspace import Workspace, WorkspaceError, load_workspace, create_workspace
+from .loaders import ContentLoader, TemplateLoader, SnippetLoader, FunctionLoader
+from .registry import Registry, LoaderRegistry, FormatterRegistry, FunctionRegistry
+from .config import WorkspaceConfig, load_workspace_config
 
 # 主要API - 大部分用户使用这些函数
-def load_workspace(path: str, **config) -> IWorkspace:
+def load_workspace_simple(path: str, **config) -> IWorkspace:
     """加载工作空间 - 主要API
     
     Args:
@@ -33,12 +33,12 @@ def load_workspace(path: str, **config) -> IWorkspace:
         工作空间实例
         
     Example:
-        >>> workspace = load_workspace("./my-workspace")
+        >>> workspace = load_workspace_simple("./my-workspace")
         >>> result = workspace.render("my-template", name="World")
     """
-    return Workspace.load(path, **config)
+    return load_workspace(path, **config)
 
-def create_workspace(path: str, config: WorkspaceConfig) -> IWorkspace:
+def create_workspace_simple(path: str, config: WorkspaceConfig) -> IWorkspace:
     """创建工作空间实例
     
     Args:
@@ -48,7 +48,7 @@ def create_workspace(path: str, config: WorkspaceConfig) -> IWorkspace:
     Returns:
         工作空间实例
     """
-    return Workspace(path, config)
+    return create_workspace(path, config)
 
 __all__ = [
     # 接口
@@ -56,14 +56,29 @@ __all__ = [
     "ILoader", 
     "IRegistry",
     
-    # 实现
+    # 核心实现
     "Workspace",
+    "WorkspaceError",
+    
+    # 加载器
     "ContentLoader",
-    "ConfigLoader",
+    "TemplateLoader",
+    "SnippetLoader", 
+    "FunctionLoader",
+    
+    # 注册表
     "Registry",
+    "LoaderRegistry",
+    "FormatterRegistry",
+    "FunctionRegistry",
+    
+    # 配置
     "WorkspaceConfig",
+    "load_workspace_config",
     
     # 主要API
     "load_workspace",
     "create_workspace",
+    "load_workspace_simple",
+    "create_workspace_simple",
 ]

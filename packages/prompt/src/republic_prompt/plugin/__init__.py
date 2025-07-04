@@ -19,10 +19,10 @@
 from typing import List, Optional, Any
 
 from .interfaces import IPlugin, IExtension, IHook, IPluginManager
-from .manager import PluginManager
-from .extensions import ExtensionRegistry
-from .hooks import HookRegistry
-from .integrations import IntegrationRegistry
+from .manager import PluginManager, PluginError, FunctionPlugin, FilterPlugin, TemplatePlugin
+from .extensions import ExtensionRegistry, FunctionExtension, AttributeExtension, PropertyExtension, EventExtension
+from .hooks import HookRegistry, FunctionHook, ConditionalHook, ChainHook, HookPoints
+from .integrations import IntegrationRegistry, OpenAIIntegration, LangChainIntegration, AnthropicIntegration, OllamaIntegration
 
 # 主要API
 def create_plugin_manager() -> IPluginManager:
@@ -61,6 +61,57 @@ def load_workspace_with_plugins(path: str, plugins: Optional[List[str]] = None, 
     
     return workspace
 
+def create_function_plugin(name: str, functions: dict) -> IPlugin:
+    """创建函数插件
+    
+    Args:
+        name: 插件名称
+        functions: 函数字典
+        
+    Returns:
+        函数插件实例
+    """
+    return FunctionPlugin(name, functions)
+
+def create_integration_plugin(integration_name: str, **kwargs) -> Optional[IPlugin]:
+    """创建集成插件
+    
+    Args:
+        integration_name: 集成名称 (openai, langchain, anthropic, etc.)
+        **kwargs: 集成参数
+        
+    Returns:
+        集成插件实例
+    """
+    from .integrations import create_integration_plugin
+    return create_integration_plugin(integration_name, **kwargs)
+
+def register_hook(hook_point: str, hook_func, hook_name: Optional[str] = None) -> None:
+    """注册钩子函数
+    
+    Args:
+        hook_point: 钩子点
+        hook_func: 钩子函数
+        hook_name: 钩子名称
+    """
+    from .hooks import register_function_hook
+    name = hook_name or f"hook_{len(str(hook_func))}"
+    register_function_hook(hook_point, name, hook_func)
+
+def execute_hooks(hook_point: str, *args, **kwargs) -> List[Any]:
+    """执行钩子
+    
+    Args:
+        hook_point: 钩子点
+        *args: 位置参数
+        **kwargs: 关键字参数
+        
+    Returns:
+        钩子执行结果列表
+    """
+    from .hooks import execute_hooks as _execute_hooks
+    return _execute_hooks(hook_point, *args, **kwargs)
+
 __all__ = [
     # 接口
     "IPlugin",
@@ -68,13 +119,41 @@ __all__ = [
     "IHook",
     "IPluginManager",
     
-    # 实现
+    # 核心实现
     "PluginManager",
+    "PluginError",
+    
+    # 内置插件
+    "FunctionPlugin",
+    "FilterPlugin", 
+    "TemplatePlugin",
+    
+    # 扩展系统
     "ExtensionRegistry",
+    "FunctionExtension",
+    "AttributeExtension",
+    "PropertyExtension",
+    "EventExtension",
+    
+    # 钩子系统
     "HookRegistry",
+    "FunctionHook",
+    "ConditionalHook",
+    "ChainHook",
+    "HookPoints",
+    
+    # 集成系统
     "IntegrationRegistry",
+    "OpenAIIntegration",
+    "LangChainIntegration", 
+    "AnthropicIntegration",
+    "OllamaIntegration",
     
     # 主要API
     "create_plugin_manager",
     "load_workspace_with_plugins",
+    "create_function_plugin",
+    "create_integration_plugin",
+    "register_hook",
+    "execute_hooks",
 ]
