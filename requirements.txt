@@ -1,0 +1,10 @@
+# Context Engineering for Agents - Requirements
+# Minimal dependencies following KISS principles
+
+# Core Python standard library only - no external dependencies needed!
+# This system is designed to work with Python 3.8+ standard library only
+
+# For development/testing (optional):
+# pytest>=7.0.0
+# black>=22.0.0
+# mypy>=1.0.0
