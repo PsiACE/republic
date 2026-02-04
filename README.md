@@ -6,16 +6,24 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/psiace/republic)](https://img.shields.io/github/commit-activity/m/psiace/republic)
 [![License](https://img.shields.io/github/license/psiace/republic)](https://img.shields.io/github/license/psiace/republic)
 
-A minimal, explicit LLM router and agent toolkit built on top of Mozilla's any-llm.
+A minimal, explicit LLM client and router built on top of Mozilla's any-llm.
+
+Republic has one state primitive: a tape. A tape is an append-only log of messages and anchors.
+You decide what goes into context, where a phase starts, and how handoff works. No hidden memory.
+
+The idea is inspired by punch tape: a linear, immutable record you can slice into deterministic context windows.
+It keeps the system simple, auditable, and easy to hand off between humans and agents.
 
 Visit https://getrepublic.org for concepts, guides, and API reference.
 
-- Small surface area with predictable behavior
-- Provider-agnostic routing and fallbacks
-- Tape-first state with explicit handoff and context control
-- Typed tools with optional auto-execution
+- One entry point (`LLM`) with predictable behavior
+- Tape-first state with explicit anchors and selection
+- Provider-agnostic routing, retries, and fallbacks
+- Typed tools with optional execution
 - Streaming-first ergonomics
 - Clear extension points for storage and observability
+
+This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai); we hope you like it too.
 
 ## Requirements
 
@@ -34,12 +42,7 @@ uv add republic
 ```python
 import os
 
-from republic import LLM, tool
-
-@tool
-def get_weather(location: str) -> str:
-    """Get the weather for a location."""
-    return f"Weather in {location} is sunny"
+from republic import LLM
 
 llm = LLM(
     model="openrouter:openrouter/free",
@@ -51,13 +54,13 @@ llm = LLM(
         }
     },
 )
+
 print(llm.chat("Give me a one-sentence overview of Republic."))
 
 notes = llm.tape("notes")
 print(notes("Remember this for later."))
 print(notes.messages())
 
-print(notes.tools_auto("What's the weather in Tokyo?", tools=[get_weather]))
 for chunk in llm.chat.stream("Write a 5-word line about light."):
     print(chunk, end="")
 ```
@@ -71,7 +74,3 @@ See `CONTRIBUTING.md` for local setup, testing, and release guidance.
 ## License
 
 Apache 2.0
-
----
-
-> This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai); we hope you like it too.
