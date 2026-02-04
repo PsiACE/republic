@@ -8,6 +8,7 @@ from typing import Any, TypeVar
 from any_llm.types.batch import Batch
 
 from republic.core.execution import LLMCore
+from republic.core.errors import ErrorKind, RepublicError
 
 T = TypeVar("T")
 
@@ -20,6 +21,15 @@ class BatchClient:
 
     def _provider_name(self, provider: str | None) -> str:
         return provider or self._core.provider
+
+    @staticmethod
+    def _ensure_supported(provider_name: str, client: Any) -> None:
+        supports_batch = getattr(client, "SUPPORTS_BATCH", True)
+        if not supports_batch:
+            raise RepublicError(
+                ErrorKind.INVALID_INPUT,
+                f"{provider_name} does not support batch operations.",
+            )
 
     def _call(self, provider_name: str, name: str, fn: Callable[[], T], **attributes: Any) -> T:
         try:
@@ -49,6 +59,7 @@ class BatchClient:
     ) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return self._call(
             provider_name,
             "republic.batch.create",
@@ -74,6 +85,7 @@ class BatchClient:
     ) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return await self._acall(
             provider_name,
             "republic.batch.create",
@@ -90,6 +102,7 @@ class BatchClient:
     def retrieve(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return self._call(
             provider_name,
             "republic.batch.retrieve",
@@ -100,6 +113,7 @@ class BatchClient:
     async def aretrieve(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return await self._acall(
             provider_name,
             "republic.batch.retrieve",
@@ -110,6 +124,7 @@ class BatchClient:
     def cancel(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return self._call(
             provider_name,
             "republic.batch.cancel",
@@ -120,6 +135,7 @@ class BatchClient:
     async def acancel(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return await self._acall(
             provider_name,
             "republic.batch.cancel",
@@ -137,6 +153,7 @@ class BatchClient:
     ) -> Sequence[Batch]:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return self._call(
             provider_name,
             "republic.batch.list",
@@ -155,6 +172,7 @@ class BatchClient:
     ) -> Sequence[Batch]:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
+        self._ensure_supported(provider_name, client)
         return await self._acall(
             provider_name,
             "republic.batch.list",

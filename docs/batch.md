@@ -1,5 +1,7 @@
 # Batch
 
+Note: Batch requires provider support. OpenRouter does not support Batch.
+
 ```python
 from republic import LLM
 

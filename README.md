@@ -27,11 +27,29 @@ pip install republic
 ## Quick Start
 
 ```python
-from republic import LLM
+import os
 
-llm = LLM(model="openai:gpt-4o-mini", api_key="<OPENAI_API_KEY>")
-print(llm.chat.create("Who are you?"))
-print(llm.chat("Who are you?"))
+from republic import LLM, tool
+
+@tool
+def get_weather(location: str) -> str:
+    """Get the weather for a location."""
+    return f"Weather in {location} is sunny"
+
+llm = LLM(
+    model="openrouter:openrouter/free",
+    api_key=os.environ["LLM_API_KEY"],
+    client_args={
+        "default_headers": {
+            "HTTP-Referer": "https://getrepublic.org",
+            "X-Title": "republic docs",
+        }
+    },
+)
+print(llm.chat("Give me a one-sentence overview of Republic."))
+print(llm.chat.tools_auto("What's the weather in Tokyo?", tools=[get_weather]))
+for chunk in llm.chat.stream("Write a 5-word line about light."):
+    print(chunk, end="")
 ```
 
 Use `provider:model` when overriding:
@@ -42,8 +60,6 @@ from republic import LLM
 llm = LLM(provider="openai", model="gpt-4o-mini", api_key="<OPENAI_API_KEY>")
 print(llm.chat.create("Summarize this in one sentence."))
 ```
-
-Note: Republic only accepts `provider:model`.
 
 ## Development
 

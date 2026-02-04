@@ -30,6 +30,8 @@ print(result)
 
 ## Typed Tools and Schemas
 
+Note: Schema-only and runnable tools must use distinct `name` values to avoid conflicts.
+
 ```python
 from pydantic import BaseModel
 from republic import ToolSet, schema_from_model, tool_from_model
@@ -39,12 +41,12 @@ class WeatherSchema(BaseModel):
 
     location: str
 
-tool_schema = schema_from_model(WeatherSchema)
+tool_schema = schema_from_model(WeatherSchema, name="weather_schema")
 
 def handle_weather(payload: WeatherSchema) -> str:
     return f"Weather in {payload.location} is sunny"
 
-typed_tool = tool_from_model(WeatherSchema, handle_weather)
+typed_tool = tool_from_model(WeatherSchema, handle_weather, name="weather_tool")
 
 toolset = ToolSet.from_tools([tool_schema, typed_tool])
 print(toolset.payload)
