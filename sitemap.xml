@@ -1,15 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
-         <loc>https://getrepublic.org/</loc>
-         <lastmod>2025-07-14</lastmod>
+         <loc>https://psiace.github.io/republic/</loc>
+         <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/about/license/</loc>
-         <lastmod>2025-07-14</lastmod>
+         <loc>https://psiace.github.io/republic/batch/</loc>
+         <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/about/philosophy/</loc>
-         <lastmod>2025-07-14</lastmod>
+         <loc>https://psiace.github.io/republic/chat/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://psiace.github.io/republic/errors/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://psiace.github.io/republic/getting-started/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://psiace.github.io/republic/modules/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://psiace.github.io/republic/observability/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://psiace.github.io/republic/responses/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://psiace.github.io/republic/storage/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://psiace.github.io/republic/tools/</loc>
+         <lastmod>2026-02-04</lastmod>
     </url>
 </urlset>
