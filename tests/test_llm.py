@@ -6,7 +6,7 @@ import warnings
 import pytest
 from any_llm.exceptions import AnyLLMError, ProviderError
 
-from republic import DEFAULT_MODEL, ErrorKind, LLM, RepublicError
+from republic import DEFAULT_MODEL, LLM, ErrorKind, RepublicError
 
 
 class TestDefaults:

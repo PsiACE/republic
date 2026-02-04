@@ -147,5 +147,5 @@ class TestToolExecution:
 
         toolset = ToolSet.from_tools([add])
         executor = ToolExecutor()
-        response = {"function": {"name": "add", "arguments": "{\"a\": 1, \"b\": 2}"}}
+        response = {"function": {"name": "add", "arguments": '{"a": 1, "b": 2}'}}
         assert executor.execute(response, tools=toolset) == "3"

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 
-from republic import ErrorKind, LLM, RepublicError, ToolSet, tool
+from republic import LLM, ErrorKind, RepublicError, ToolSet, tool
 
 
 def _make_tool_call_response() -> ChatCompletion:
@@ -46,7 +46,7 @@ def _make_tool_call_stream() -> list[ChatCompletionChunk]:
                             "index": 0,
                             "id": "call_1",
                             "type": "function",
-                            "function": {"name": "get_weather", "arguments": "{\"location\": \"Tokyo\"}"},
+                            "function": {"name": "get_weather", "arguments": '{"location": "Tokyo"}'},
                         }
                     ]
                 },
@@ -60,21 +60,19 @@ def _make_tool_call_stream() -> list[ChatCompletionChunk]:
 def _make_text_stream(chunks: list[str]) -> list[ChatCompletionChunk]:
     payloads = []
     for idx, content in enumerate(chunks):
-        payloads.append(
-            {
-                "id": f"chatcmpl_stream_{idx}",
-                "object": "chat.completion.chunk",
-                "created": 0,
-                "model": "gpt-4o-mini",
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {"content": content},
-                        "finish_reason": None,
-                    }
-                ],
-            }
-        )
+        payloads.append({
+            "id": f"chatcmpl_stream_{idx}",
+            "object": "chat.completion.chunk",
+            "created": 0,
+            "model": "gpt-4o-mini",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": content},
+                    "finish_reason": None,
+                }
+            ],
+        })
     return [ChatCompletionChunk.model_validate(payload) for payload in payloads]
 
 

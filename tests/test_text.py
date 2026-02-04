@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from republic import ErrorKind, LLM, RepublicError
+from republic import LLM, ErrorKind, RepublicError
 
 
 class TestTextHelpers:
