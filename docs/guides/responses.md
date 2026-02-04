@@ -1,5 +1,7 @@
 # Responses
 
+Use Responses when you need provider-native output or events. Responses are stateless.
+
 ```python
 from republic import LLM
 

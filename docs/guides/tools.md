@@ -1,5 +1,10 @@
 # Tools
 
+Tools let you describe functions and optionally run them.
+
+Tool calling requires a tool-capable model. The `openrouter/free` router may return models that do not support
+tool calling, so use a fixed model for the examples below.
+
 ## Define a Tool
 
 ```python
@@ -23,8 +28,19 @@ print(result)
 
 ## Automatic Tool Execution
 
+Automatic tool execution requires a tool-capable model. The `openrouter/free` router may return models that do not
+support tool calling, so prefer a fixed model for production tools.
+
 ```python
 result = llm.chat.tools_auto("What's the weather in Tokyo?", tools=[get_weather])
+print(result)
+```
+
+## Tools with Tape
+
+```python
+tape = llm.tape("notes")
+result = tape.tools_auto("What's the weather in Tokyo?", tools=[get_weather])
 print(result)
 ```
 

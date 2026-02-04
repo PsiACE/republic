@@ -1,6 +1,8 @@
 # Batch
 
-Note: Batch requires provider support. OpenRouter does not support Batch.
+Batch is for offline or large-volume requests. It depends on provider support.
+
+OpenRouter does not support batch operations. Use a provider that exposes batch endpoints (for example, OpenAI).
 
 ```python
 from republic import LLM

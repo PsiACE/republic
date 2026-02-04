@@ -5,7 +5,8 @@ Errors are raised as `RepublicError` with a stable `ErrorKind`.
 You can override the default classification via `error_classifier`:
 
 ```python
-from republic import ErrorKind, LLM
+from republic import LLM
+from republic.core import ErrorKind
 
 def classify(exc: Exception):
     if isinstance(exc, TimeoutError):

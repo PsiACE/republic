@@ -10,16 +10,19 @@ copyright: Maintained by <a href="https://psiace.com">psiace</a>.
 nav:
   - Home: index.md
   - Quick Start: getting-started.md
+  - Concepts:
+      - Tape: concepts/tape.md
+      - Context: concepts/context.md
   - Guides:
-      - Chat: chat.md
-      - Tools: tools.md
-      - Responses: responses.md
-      - Batch: batch.md
-      - Conversation Storage: storage.md
-      - Error Handling: errors.md
-      - Observability: observability.md
+      - Chat: guides/chat.md
+      - Tools: guides/tools.md
+      - Responses: guides/responses.md
+      - Batch: guides/batch.md
+  - Operations:
+      - Error Handling: operations/errors.md
+      - Observability: operations/observability.md
   - Reference:
-      - Modules: modules.md
+      - API Reference: reference/api.md
 plugins:
   - search
   - mkdocstrings:

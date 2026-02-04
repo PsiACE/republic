@@ -8,10 +8,11 @@
 
 A minimal, explicit LLM router and agent toolkit built on top of Mozilla's any-llm.
 
-This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai); we hope you like it too.
+Visit https://getrepublic.org for concepts, guides, and API reference.
 
 - Small surface area with predictable behavior
 - Provider-agnostic routing and fallbacks
+- Tape-first state with explicit handoff and context control
 - Typed tools with optional auto-execution
 - Streaming-first ergonomics
 - Clear extension points for storage and observability
@@ -24,6 +25,8 @@ This project is derived from [lightning-ai/litai](https://github.com/lightning-a
 
 ```bash
 pip install republic
+# Or, with uv
+uv add republic
 ```
 
 ## Quick Start
@@ -49,19 +52,17 @@ llm = LLM(
     },
 )
 print(llm.chat("Give me a one-sentence overview of Republic."))
-print(llm.chat.tools_auto("What's the weather in Tokyo?", tools=[get_weather]))
+
+notes = llm.tape("notes")
+print(notes("Remember this for later."))
+print(notes.messages())
+
+print(notes.tools_auto("What's the weather in Tokyo?", tools=[get_weather]))
 for chunk in llm.chat.stream("Write a 5-word line about light."):
     print(chunk, end="")
 ```
 
-Use `provider:model` when overriding:
-
-```python
-from republic import LLM
-
-llm = LLM(provider="openai", model="gpt-4o-mini", api_key="<OPENAI_API_KEY>")
-print(llm.chat.create("Summarize this in one sentence."))
-```
+Tool calling requires a tool-capable model. See the docs for tool examples and model guidance.
 
 ## Development
 
@@ -70,3 +71,7 @@ See `CONTRIBUTING.md` for local setup, testing, and release guidance.
 ## License
 
 Apache 2.0
+
+---
+
+> This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai); we hope you like it too.
