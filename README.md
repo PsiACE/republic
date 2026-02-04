@@ -14,6 +14,10 @@ A minimal, explicit LLM router and agent toolkit built on top of Mozilla's any-l
 - Streaming-first ergonomics
 - Clear extension points for storage and observability
 
+## Requirements
+
+- Python 3.11+
+
 ## Installation
 
 ```bash

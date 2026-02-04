@@ -1,5 +1,9 @@
 # Getting Started
 
+## Requirements
+
+- Python 3.11+
+
 ## Installation
 
 ```bash
