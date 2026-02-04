@@ -395,11 +395,16 @@
             <main id="terminal-mkdocs-main-content">
 <section id="mkdocs-terminal-content">
     <h1 id="republic">republic<a class="headerlink" href="#republic" title="Permanent link">&para;</a></h1>
-<p>A minimal, explicit LLM router and agent toolkit built on top of Mozilla's any-llm.</p>
+<p>Republic is an explicit LLM client and router with append-only history and controllable context.</p>
+<p>It gives you one state primitive: a tape. A tape is an append-only log of messages and anchors.
+You decide what goes into context and where a phase starts. No hidden memory.</p>
+<p>The mental model comes from punch tape: a linear record that you can slice into deterministic context windows.
+That makes handoff and audit simple while keeping the API small.</p>
+<p>We like LitAI's pragmatic feel. Republic is derived from it, and we hope you like it too.</p>
 <h2 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
 <p>Start here: <a href="getting-started/">Getting Started</a></p>
 <h2 id="core-idea">Core Idea<a class="headerlink" href="#core-idea" title="Permanent link">&para;</a></h2>
-<p>Tape makes state explicit. You decide what stays, where context starts, and how handoff works.</p>
+<p>Tape makes state explicit. You choose the slice, not the framework.</p>
 <h2 id="concepts">Concepts<a class="headerlink" href="#concepts" title="Permanent link">&para;</a></h2>
 <ul>
 <li><a href="concepts/tape/">Tape</a></li>
