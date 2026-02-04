@@ -5,39 +5,43 @@
          <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/batch/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
-         <loc>https://getrepublic.org/chat/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
-         <loc>https://getrepublic.org/errors/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
          <loc>https://getrepublic.org/getting-started/</loc>
          <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/modules/</loc>
+         <loc>https://getrepublic.org/concepts/context/</loc>
          <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/observability/</loc>
+         <loc>https://getrepublic.org/concepts/tape/</loc>
          <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/responses/</loc>
+         <loc>https://getrepublic.org/guides/batch/</loc>
          <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/storage/</loc>
+         <loc>https://getrepublic.org/guides/chat/</loc>
          <lastmod>2026-02-04</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/tools/</loc>
+         <loc>https://getrepublic.org/guides/responses/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://getrepublic.org/guides/tools/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://getrepublic.org/operations/errors/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://getrepublic.org/operations/observability/</loc>
+         <lastmod>2026-02-04</lastmod>
+    </url>
+    <url>
+         <loc>https://getrepublic.org/reference/api/</loc>
          <lastmod>2026-02-04</lastmod>
     </url>
 </urlset>

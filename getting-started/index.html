@@ -113,6 +113,10 @@
                 
                 
                 
+                
+                
+                
+                
                     
                     
 
@@ -171,6 +175,58 @@
             
             <span class="
         
+    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Concepts</span>
+        
+    
+    
+        
+        
+            <ul class="terminal-mkdocs-side-nav-li-ul">
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../concepts/tape/">Tape</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../concepts/context/">Context</a>
+        
+    
+    </li>
+            
+            
+    </ul>
+        
+    
+       </li>
+        
+          <li class="terminal-mkdocs-side-nav-li">
+    
+        
+        
+        
+            
+    
+        
+        
+            
+            
+            <span class="
+        
     terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Guides</span>
         
     
@@ -186,7 +242,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../chat/">Chat</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../guides/chat/">Chat</a>
         
     
     </li>
@@ -199,7 +255,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../tools/">Tools</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../guides/tools/">Tools</a>
         
     
     </li>
@@ -212,7 +268,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../responses/">Responses</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../guides/responses/">Responses</a>
         
     
     </li>
@@ -225,7 +281,46 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../batch/">Batch</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../guides/batch/">Batch</a>
+        
+    
+    </li>
+            
+            
+    </ul>
+        
+    
+       </li>
+        
+          <li class="terminal-mkdocs-side-nav-li">
+    
+        
+        
+        
+            
+    
+        
+        
+            
+            
+            <span class="
+        
+    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Operations</span>
+        
+    
+    
+        
+        
+            <ul class="terminal-mkdocs-side-nav-li-ul">
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../operations/errors/">Error Handling</a>
         
     
     </li>
@@ -238,33 +333,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../storage/">Conversation Storage</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../errors/">Error Handling</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../observability/">Observability</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../operations/observability/">Observability</a>
         
     
     </li>
@@ -303,7 +372,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../modules/">Modules</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../reference/api/">API Reference</a>
         
     
     </li>
@@ -319,7 +388,7 @@
 <nav>
     <ul>
         <li><a href="#getting-started">Getting Started</a></li>
-        <li><a href="#requirements">Requirements</a></li><li><a href="#installation">Installation</a></li><li><a href="#quick-start">Quick Start</a></li><li><a href="#provider-and-model">Provider and Model</a></li>
+        <li><a href="#requirements">Requirements</a></li><li><a href="#installation">Installation</a></li><li><a href="#quick-start">Quick Start</a></li><li><a href="#provider-and-model">Provider and Model</a></li><li><a href="#next">Next</a></li>
     </ul>
 </nav>
 </aside>
@@ -332,14 +401,20 @@
 </ul>
 <h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
 <pre><code class="language-bash">pip install republic
+# Or, with uv
+uv add republic
 </code></pre>
 <h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
 <pre><code class="language-python">from republic import LLM
 
 llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
+tape = llm.tape(&quot;notes&quot;)
+
 print(llm.chat.create(&quot;Who are you?&quot;))
-print(llm.chat(&quot;Who are you?&quot;))
+print(tape(&quot;Remember this for later.&quot;))
+print(tape.messages())
 </code></pre>
+<p><code>llm.chat</code> is stateless. <code>llm.tape(name)</code> gives you stateful chat with explicit history.</p>
 <h2 id="provider-and-model">Provider and Model<a class="headerlink" href="#provider-and-model" title="Permanent link">&para;</a></h2>
 <p>Republic only accepts <code>provider:model</code>. The legacy <code>provider/model</code> format is not supported.</p>
 <pre><code class="language-python">from republic import LLM
@@ -347,6 +422,11 @@ print(llm.chat(&quot;Who are you?&quot;))
 llm = LLM(provider=&quot;openai&quot;, model=&quot;gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
 print(llm.chat.create(&quot;Summarize this in one sentence.&quot;))
 </code></pre>
+<h2 id="next">Next<a class="headerlink" href="#next" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Learn the mental model in <a href="../concepts/tape/">Tape</a> and <a href="../concepts/context/">Context</a>.</li>
+<li>Follow the practical recipes in <a href="../guides/chat/">Chat</a> and <a href="../guides/tools/">Tools</a>.</li>
+</ul>
 </section>
 
             </main>

@@ -11,28 +11,28 @@
     
     <meta name="author" content="Chojan Shang"> 
     
-    <link rel="canonical" href="https://getrepublic.org/batch/"><link rel="icon" type="image/png" sizes="192x192" href="../img/android-chrome-192x192.png" />
-<link rel="icon" type="image/png" sizes="512x512" href="../img/android-chrome-512x512.png" />
-<link rel="apple-touch-icon" sizes="180x180" href="../img/apple-touch-icon.png" />
-<link rel="shortcut icon" type="image/png" sizes="48x48" href="../img/favicon.ico" />
-<link rel="icon" type="image/png" sizes="16x16" href="../img/favicon-16x16.png" />
-<link rel="icon" type="image/png" sizes="32x32" href="../img/favicon-32x32.png" />
+    <link rel="canonical" href="https://getrepublic.org/operations/observability/"><link rel="icon" type="image/png" sizes="192x192" href="../../img/android-chrome-192x192.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="../../img/android-chrome-512x512.png" />
+<link rel="apple-touch-icon" sizes="180x180" href="../../img/apple-touch-icon.png" />
+<link rel="shortcut icon" type="image/png" sizes="48x48" href="../../img/favicon.ico" />
+<link rel="icon" type="image/png" sizes="16x16" href="../../img/favicon-16x16.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="../../img/favicon-32x32.png" />
 
 
     
  
-<title>Batch - republic</title>
+<title>Observability - republic</title>
 
 
-<link href="../css/fontawesome/css/fontawesome.min.css" rel="stylesheet">
-<link href="../css/fontawesome/css/solid.min.css" rel="stylesheet">
-<link href="../css/normalize.css" rel="stylesheet">
-<link href="../css/terminal.css" rel="stylesheet">
-<link href="../css/theme.css" rel="stylesheet">
-<link href="../css/theme.tile_grid.css" rel="stylesheet">
-<link href="../css/theme.footer.css" rel="stylesheet">
+<link href="../../css/fontawesome/css/fontawesome.min.css" rel="stylesheet">
+<link href="../../css/fontawesome/css/solid.min.css" rel="stylesheet">
+<link href="../../css/normalize.css" rel="stylesheet">
+<link href="../../css/terminal.css" rel="stylesheet">
+<link href="../../css/theme.css" rel="stylesheet">
+<link href="../../css/theme.tile_grid.css" rel="stylesheet">
+<link href="../../css/theme.footer.css" rel="stylesheet">
 <!-- default color palette -->
-<link href="../css/palettes/default.css" rel="stylesheet">
+<link href="../../css/palettes/default.css" rel="stylesheet">
 
 <!-- page layout -->
 <style>
@@ -58,26 +58,26 @@
 
 
     
-    <link href="../assets/_mkdocstrings.css" rel="stylesheet">  
+    <link href="../../assets/_mkdocstrings.css" rel="stylesheet">  
     
     
 
     
     <!-- search css support -->
-<link href="../css/search/bootstrap-modal.css" rel="stylesheet">
+<link href="../../css/search/bootstrap-modal.css" rel="stylesheet">
 <!-- search scripts -->
 <script>
-    var base_url = "..",
+    var base_url = "../..",
     shortcuts = "{}";
 </script>
-<script src="../js/jquery/jquery-1.10.1.min.js" defer></script>
-<script src="../js/bootstrap/bootstrap.min.js" defer></script>
-<script src="../js/mkdocs/base.js" defer></script>
+<script src="../../js/jquery/jquery-1.10.1.min.js" defer></script>
+<script src="../../js/bootstrap/bootstrap.min.js" defer></script>
+<script src="../../js/mkdocs/base.js" defer></script>
     
     
     
     
-    <script src="../search/main.js"></script>
+    <script src="../../search/main.js"></script>
     
 
     
@@ -95,7 +95,7 @@
                 
                 
                 <li property="itemListElement" typeof="ListItem">
-                    <a href=".." class="menu-item " property="item" typeof="WebPage">
+                    <a href="../.." class="menu-item " property="item" typeof="WebPage">
                         <span property="name">Home</span>
                     </a>
                     <meta property="position" content="0">
@@ -103,11 +103,15 @@
                 
                 
                 <li property="itemListElement" typeof="ListItem">
-                    <a href="../getting-started/" class="menu-item " property="item" typeof="WebPage">
+                    <a href="../../getting-started/" class="menu-item " property="item" typeof="WebPage">
                         <span property="name">Quick Start</span>
                     </a>
                     <meta property="position" content="1">
                 </li>
+                
+                
+                
+                
                 
                 
                 
@@ -140,7 +144,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="..">Home</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../..">Home</a>
         
     
     
@@ -153,7 +157,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../getting-started/">Quick Start</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../getting-started/">Quick Start</a>
         
     
     
@@ -168,9 +172,13 @@
             
     
         
-        <span class="
         
-    terminal-mkdocs-side-nav-item--active terminal-mkdocs-side-nav-section-no-index">Guides</span>
+            
+            
+            <span class="
+        
+    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Concepts</span>
+        
     
     
         
@@ -184,7 +192,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../chat/">Chat</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/tape/">Tape</a>
         
     
     </li>
@@ -197,7 +205,46 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../tools/">Tools</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/context/">Context</a>
+        
+    
+    </li>
+            
+            
+    </ul>
+        
+    
+       </li>
+        
+          <li class="terminal-mkdocs-side-nav-li">
+    
+        
+        
+        
+            
+    
+        
+        
+            
+            
+            <span class="
+        
+    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Guides</span>
+        
+    
+    
+        
+        
+            <ul class="terminal-mkdocs-side-nav-li-ul">
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../../guides/chat/">Chat</a>
         
     
     </li>
@@ -210,7 +257,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../responses/">Responses</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../guides/tools/">Tools</a>
         
     
     </li>
@@ -222,7 +269,9 @@
                 <li class="terminal-mkdocs-side-nav-li-ul-li">
     
         
-        <span class="terminal-mkdocs-side-nav-item--active">Batch</span>
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../../guides/responses/">Responses</a>
+        
     
     </li>
             
@@ -234,11 +283,33 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../storage/">Conversation Storage</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../guides/batch/">Batch</a>
         
     
     </li>
             
+            
+    </ul>
+        
+    
+       </li>
+        
+          <li class="terminal-mkdocs-side-nav-li">
+    
+        
+        
+        
+            
+    
+        
+        <span class="
+        
+    terminal-mkdocs-side-nav-item--active terminal-mkdocs-side-nav-section-no-index">Operations</span>
+    
+    
+        
+        
+            <ul class="terminal-mkdocs-side-nav-li-ul">
         
             
             
@@ -259,9 +330,7 @@
                 <li class="terminal-mkdocs-side-nav-li-ul-li">
     
         
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../observability/">Observability</a>
-        
+        <span class="terminal-mkdocs-side-nav-item--active">Observability</span>
     
     </li>
             
@@ -299,7 +368,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../modules/">Modules</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../reference/api/">API Reference</a>
         
     
     </li>
@@ -314,24 +383,21 @@
 </nav><hr>
 <nav>
     <ul>
-        <li><a href="#batch">Batch</a></li>
+        <li><a href="#observability">Observability</a></li>
         
     </ul>
 </nav>
 </aside>
             <main id="terminal-mkdocs-main-content">
 <section id="mkdocs-terminal-content">
-    <h1 id="batch">Batch<a class="headerlink" href="#batch" title="Permanent link">&para;</a></h1>
-<p>Note: Batch requires provider support. OpenRouter does not support Batch.</p>
-<pre><code class="language-python">from republic import LLM
+    <h1 id="observability">Observability<a class="headerlink" href="#observability" title="Permanent link">&para;</a></h1>
+<p>Republic integrates with Logfire when installed and configured.</p>
+<p>Note: Install the optional dependency <code>republic[observability]</code> to use Logfire.</p>
+<pre><code class="language-python">from republic.core import instrument_republic
 
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
-job = llm.batch.create(
-    input_file_path=&quot;/tmp/requests.jsonl&quot;,
-    endpoint=&quot;/v1/chat/completions&quot;,
-)
-print(job)
+instrument_republic()
 </code></pre>
+<p>You can also use <code>span</code> for manual tracing.</p>
 </section>
 
             </main>
