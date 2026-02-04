@@ -1,7 +1,8 @@
 import pytest
 from pydantic import BaseModel
 
-from republic import ErrorKind, RepublicError, Tool, ToolSet, schema_from_model, tool, tool_from_model
+from republic import Tool, ToolSet, schema_from_model, tool, tool_from_model
+from republic.core import ErrorKind, RepublicError
 from republic.tools import ToolExecutor
 
 

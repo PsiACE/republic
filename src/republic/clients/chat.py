@@ -8,9 +8,13 @@ from typing import Any
 
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage, ReasoningEffort
 
-from republic.core.conversations import ConversationStore, InMemoryConversationStore
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
+from republic.tape.context import TapeContext, build_messages
+from republic.tape.entries import TapeEntry
+from republic.tape.handoff import HandoffHandler, HandoffPolicy
+from republic.tape.query import TapeQuery
+from republic.tape.store import InMemoryTapeStore, TapeStore
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput, ToolSet, normalize_tools
 
@@ -22,7 +26,7 @@ class PreparedChat:
     payload: list[dict[str, Any]]
     new_messages: list[dict[str, Any]]
     toolset: ToolSet
-    conversation: str | None
+    tape: str | None
     should_update: bool
 
     @property
@@ -46,16 +50,29 @@ class ChatClient:
         self,
         core: LLMCore,
         tool_executor: ToolExecutor,
-        store: ConversationStore | None = None,
+        store: TapeStore | None = None,
+        context: TapeContext | None = None,
+        handoff_handler: HandoffHandler | None = None,
+        handoff_policy: HandoffPolicy | None = None,
     ) -> None:
         self._core = core
         self._tool_executor = tool_executor
-        self._store = store or InMemoryConversationStore()
+        self._tape_store = store or InMemoryTapeStore()
+        self._default_context = context or TapeContext()
+        self._handoff_handler = handoff_handler
+        self._handoff_policy = handoff_policy
 
     def _reject_reserved_kwargs(self, kwargs: dict[str, Any], *reserved: str) -> None:
         for key in reserved:
             if key in kwargs:
                 raise RepublicError(ErrorKind.INVALID_INPUT, f"'{key}' is not supported in this method.")
+
+    def _reject_tape_kwarg(self, kwargs: dict[str, Any]) -> None:
+        if "tape" in kwargs:
+            raise RepublicError(
+                ErrorKind.INVALID_INPUT,
+                "Use llm.tape(name) for stateful chat.",
+            )
 
     def _validate_chat_input(
         self,
@@ -64,7 +81,7 @@ class ChatClient:
         messages: list[MessageInput] | None,
         system_prompt: str | None,
         images: Sequence[str] | str | None,
-        conversation: str | None,
+        tape: str | None,
     ) -> None:
         if prompt is not None and messages is not None:
             raise RepublicError(
@@ -87,10 +104,10 @@ class ChatClient:
                     ErrorKind.INVALID_INPUT,
                     "images are not supported with messages. Include image content in messages instead.",
                 )
-            if conversation is not None:
+            if tape is not None:
                 raise RepublicError(
                     ErrorKind.INVALID_INPUT,
-                    "conversation is not supported with messages.",
+                    "tape is not supported with messages.",
                 )
         if images is not None and prompt is None:
             raise RepublicError(
@@ -103,15 +120,16 @@ class ChatClient:
         prompt: str | None,
         system_prompt: str | None,
         images: Sequence[str] | str | None,
-        conversation: str | None,
+        tape: str | None,
         messages: list[MessageInput] | None,
+        context: TapeContext | None = None,
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         self._validate_chat_input(
             prompt=prompt,
             messages=messages,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
         )
         if messages is not None:
             payload = [m.model_dump(exclude_none=True) if isinstance(m, ChatCompletionMessage) else m for m in messages]
@@ -129,12 +147,12 @@ class ChatClient:
 
         user_message = {"role": "user", "content": user_content}
 
-        if conversation is None:
+        if tape is None:
             if system_prompt:
                 return [{"role": "system", "content": system_prompt}, user_message], []
             return [user_message], []
 
-        history = self._store.get(conversation) or []
+        history = self._read_messages(tape, context=context)
         new_messages: list[dict[str, Any]] = []
         if system_prompt and not any(msg.get("role") == "system" for msg in history):
             new_messages.append({"role": "system", "content": system_prompt})
@@ -147,8 +165,9 @@ class ChatClient:
         prompt: str | None,
         system_prompt: str | None,
         images: Sequence[str] | str | None,
-        conversation: str | None,
+        tape: str | None,
         messages: list[MessageInput] | None,
+        context: TapeContext | None = None,
         tools: ToolInput,
         require_tools: bool = False,
         require_runnable: bool = False,
@@ -156,7 +175,14 @@ class ChatClient:
         if require_tools and not tools:
             raise RepublicError(ErrorKind.INVALID_INPUT, "tools are required for this operation.")
 
-        messages_payload, new_messages = self._prepare_messages(prompt, system_prompt, images, conversation, messages)
+        messages_payload, new_messages = self._prepare_messages(
+            prompt,
+            system_prompt,
+            images,
+            tape,
+            messages,
+            context=context,
+        )
         toolset = self._normalize_tools(tools)
 
         if require_runnable:
@@ -165,21 +191,59 @@ class ChatClient:
             except ValueError as exc:
                 raise RepublicError(ErrorKind.INVALID_INPUT, str(exc)) from exc
 
-        should_update = conversation is not None and messages is None
+        should_update = tape is not None and messages is None
         return PreparedChat(
             payload=messages_payload,
             new_messages=new_messages,
             toolset=toolset,
-            conversation=conversation,
+            tape=tape,
             should_update=should_update,
         )
 
-    def _update_conversation(self, prepared: PreparedChat, response_text: str) -> None:
-        if prepared.conversation is None:
+    def _read_messages(
+        self,
+        tape: str,
+        *,
+        context: TapeContext | None = None,
+    ) -> list[dict[str, Any]]:
+        entries = self._context_entries(tape)
+        active_context = context or self._default_context
+        return build_messages(entries, active_context)
+
+    def _context_entries(self, tape: str) -> list[TapeEntry]:
+        return self._read_entries(tape)
+
+    def _append_tape_messages(self, tape: str, messages: list[dict[str, Any]]) -> None:
+        for message in messages:
+            self._tape_store.append(tape, TapeEntry.message(message))
+
+    def _append_tool_events(
+        self,
+        tape: str,
+        tool_calls: list[dict[str, Any]] | None,
+        tool_result: str | None,
+    ) -> None:
+        if tool_calls:
+            self._tape_store.append(tape, TapeEntry(0, "tool_call", {"calls": tool_calls}))
+        if tool_result is not None:
+            self._tape_store.append(tape, TapeEntry(0, "tool_result", {"result": tool_result}))
+
+    def _update_tape(
+        self,
+        prepared: PreparedChat,
+        response_text: str,
+        *,
+        tool_calls: list[dict[str, Any]] | None = None,
+        tool_result: str | None = None,
+    ) -> None:
+        if prepared.tape is None:
             return
-        for message in prepared.new_messages:
-            self._store.append(prepared.conversation, message)
-        self._store.append(prepared.conversation, {"role": "assistant", "content": response_text})
+        self._append_tape_messages(prepared.tape, prepared.new_messages)
+        self._append_tool_events(prepared.tape, tool_calls, tool_result)
+        self._tape_store.append(
+            prepared.tape,
+            TapeEntry.message({"role": "assistant", "content": response_text}),
+        )
 
     def _extract_text(self, response: Any) -> str:
         if isinstance(response, str):
@@ -219,7 +283,7 @@ class ChatClient:
         text = self._extract_text(response)
         if text:
             if prepared.should_update:
-                self._update_conversation(prepared, text)
+                self._update_tape(prepared, text)
             return text
         empty_error = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
         self._core.log_error(empty_error, provider_name, model_id, attempt)
@@ -343,8 +407,8 @@ class ChatClient:
                 if content:
                     yield content
 
-        if prepared.should_update and prepared.conversation and state.collected:
-            self._update_conversation(prepared, state.text())
+        if prepared.should_update and prepared.tape and state.collected:
+            self._update_tape(prepared, state.text())
 
     async def _stream_text_async(
         self,
@@ -361,8 +425,8 @@ class ChatClient:
                 if content:
                     yield content
 
-        if prepared.should_update and prepared.conversation and state.collected:
-            self._update_conversation(prepared, state.text())
+        if prepared.should_update and prepared.tape and state.collected:
+            self._update_tape(prepared, state.text())
 
     def _stream_text_with_tools(
         self,
@@ -375,6 +439,7 @@ class ChatClient:
     ) -> Iterator[str]:
         state = _StreamState()
         tool_result: str | None = None
+        tool_calls: list[dict[str, Any]] | None = None
 
         with self._core.span("republic.llm.stream", provider=provider, model=model, tool_count=len(tools)):
             for chunk in response:
@@ -389,11 +454,21 @@ class ChatClient:
                 tool_result = result
                 yield result
 
-        if prepared.should_update and prepared.conversation:
+        if prepared.should_update and prepared.tape:
             if state.collected:
-                self._update_conversation(prepared, state.text())
+                self._update_tape(
+                    prepared,
+                    state.text(),
+                    tool_calls=tool_calls,
+                    tool_result=tool_result,
+                )
             elif tool_result is not None:
-                self._update_conversation(prepared, tool_result)
+                self._update_tape(
+                    prepared,
+                    tool_result,
+                    tool_calls=tool_calls,
+                    tool_result=tool_result,
+                )
 
     async def _stream_text_with_tools_async(
         self,
@@ -406,6 +481,7 @@ class ChatClient:
     ) -> AsyncIterator[str]:
         state = _StreamState()
         tool_result: str | None = None
+        tool_calls: list[dict[str, Any]] | None = None
 
         with self._core.span("republic.llm.stream", provider=provider, model=model, tool_count=len(tools)):
             async for chunk in response:
@@ -420,11 +496,21 @@ class ChatClient:
                 tool_result = result
                 yield result
 
-        if prepared.should_update and prepared.conversation:
+        if prepared.should_update and prepared.tape:
             if state.collected:
-                self._update_conversation(prepared, state.text())
+                self._update_tape(
+                    prepared,
+                    state.text(),
+                    tool_calls=tool_calls,
+                    tool_result=tool_result,
+                )
             elif tool_result is not None:
-                self._update_conversation(prepared, tool_result)
+                self._update_tape(
+                    prepared,
+                    tool_result,
+                    tool_calls=tool_calls,
+                    tool_result=tool_result,
+                )
 
     def create(
         self,
@@ -436,7 +522,34 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> str:
+        self._reject_tape_kwarg(kwargs)
+        return self._create(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    def _create(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> str:
@@ -445,8 +558,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=None,
         )
 
@@ -480,7 +594,34 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        self._reject_tape_kwarg(kwargs)
+        return self._stream(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    def _stream(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> Iterator[str]:
@@ -489,8 +630,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=None,
         )
 
@@ -523,7 +665,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> ChatCompletion:
+        self._reject_tape_kwarg(kwargs)
+        return self._raw(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    def _raw(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -533,8 +704,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
         )
 
@@ -562,7 +734,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> Iterator[ChatCompletionChunk]:
+        self._reject_tape_kwarg(kwargs)
+        return self._stream_raw(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    def _stream_raw(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -572,8 +773,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
         )
 
@@ -601,7 +803,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        self._reject_tape_kwarg(kwargs)
+        return self._tool_calls(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    def _tool_calls(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -611,8 +842,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
             require_tools=True,
         )
@@ -641,7 +873,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> str:
+        self._reject_tape_kwarg(kwargs)
+        return self._tools_auto(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    def _tools_auto(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -651,8 +912,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
             require_tools=True,
             require_runnable=True,
@@ -663,7 +925,12 @@ class ChatClient:
             if tool_calls:
                 result = self._tool_executor.execute(tool_calls, tools=prepared.toolset.runnable)
                 if result is not None and prepared.should_update:
-                    self._update_conversation(prepared, result)
+                    self._update_tape(
+                        prepared,
+                        result,
+                        tool_calls=tool_calls,
+                        tool_result=result,
+                    )
                 return result
             return self._text_or_retry(
                 response,
@@ -694,7 +961,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> Iterator[str]:
+        self._reject_tape_kwarg(kwargs)
+        return self._tools_auto_stream(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    def _tools_auto_stream(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -704,8 +1000,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
             require_tools=True,
             require_runnable=True,
@@ -741,7 +1038,34 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> str:
+        self._reject_tape_kwarg(kwargs)
+        return await self._acreate(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    async def _acreate(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> str:
@@ -750,8 +1074,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=None,
         )
 
@@ -785,7 +1110,34 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        self._reject_tape_kwarg(kwargs)
+        return await self._astream(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    async def _astream(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
@@ -794,8 +1146,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=None,
         )
 
@@ -828,7 +1181,7 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tape: str | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -838,7 +1191,7 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
             tools=tools,
         )
@@ -867,7 +1220,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatCompletionChunk]:
+        self._reject_tape_kwarg(kwargs)
+        return await self._astream_raw(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    async def _astream_raw(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -877,8 +1259,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
         )
 
@@ -906,7 +1289,7 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tape: str | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -916,7 +1299,7 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
             tools=tools,
             require_tools=True,
@@ -946,7 +1329,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> str:
+        self._reject_tape_kwarg(kwargs)
+        return await self._atools_auto(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    async def _atools_auto(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -956,8 +1368,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
             require_tools=True,
             require_runnable=True,
@@ -968,7 +1381,12 @@ class ChatClient:
             if tool_calls:
                 result = self._tool_executor.execute(tool_calls, tools=prepared.toolset.runnable)
                 if result is not None and prepared.should_update:
-                    self._update_conversation(prepared, result)
+                    self._update_tape(
+                        prepared,
+                        result,
+                        tool_calls=tool_calls,
+                        tool_result=result,
+                    )
                 return result
             return self._text_or_retry(
                 response,
@@ -999,7 +1417,36 @@ class ChatClient:
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
         images: Sequence[str] | str | None = None,
-        conversation: str | None = None,
+        tools: ToolInput = None,
+        reasoning_effort: ReasoningEffort | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[str]:
+        self._reject_tape_kwarg(kwargs)
+        return await self._atools_auto_stream(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            images=images,
+            tools=tools,
+            reasoning_effort=reasoning_effort,
+            **kwargs,
+        )
+
+    async def _atools_auto_stream(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
@@ -1009,8 +1456,9 @@ class ChatClient:
             prompt=prompt,
             system_prompt=system_prompt,
             images=images,
-            conversation=conversation,
+            tape=tape,
             messages=messages,
+            context=context,
             tools=tools,
             require_tools=True,
             require_runnable=True,
@@ -1036,16 +1484,41 @@ class ChatClient:
             on_response=_handle,
         )
 
-    def reset_conversation(self, name: str) -> None:
-        self._store.reset(name)
+    def _reset_tape(self, name: str) -> None:
+        self._tape_store.reset(name)
 
-    def list_conversations(self) -> list[str]:
-        return self._store.list()
+    def _list_tapes(self) -> list[str]:
+        return self._tape_store.list_tapes()
 
-    def get_history(self, name: str, raw: bool = False) -> list[dict[str, Any]] | None:
-        history = self._store.get(name)
-        if history is None:
-            return None
-        if raw:
-            return history
-        return [{"role": msg.get("role"), "content": msg.get("content")} for msg in history]
+    def _query_tape(self, name: str) -> TapeQuery:
+        return TapeQuery(name, self._tape_store)
+
+    def _read_entries(self, name: str) -> list[TapeEntry]:
+        return self._tape_store.read(name) or []
+
+    def _append_entry(self, name: str, entry: TapeEntry) -> None:
+        self._tape_store.append(name, entry)
+
+    def _set_default_context(self, context: TapeContext) -> None:
+        self._default_context = context
+
+    def _handoff(
+        self,
+        tape: str,
+        name: str,
+        *,
+        state: dict[str, Any] | None = None,
+        **meta: Any,
+    ) -> list[TapeEntry]:
+        if self._handoff_policy is not None:
+            allowed = self._handoff_policy.allow(tape=tape, name=name, state=state, meta=meta)
+            if not allowed:
+                return []
+        handler = self._handoff_handler
+        if handler is None:
+            entries = [TapeEntry.anchor(name, state=state, **meta)]
+        else:
+            entries = handler.build_entries(tape, name, state, meta)
+        for entry in entries:
+            self._tape_store.append(tape, entry)
+        return entries

@@ -4,6 +4,8 @@ import builtins
 
 import pytest
 
+from republic import TapeEntry
+
 
 class StubCallable:
     def __init__(self) -> None:
@@ -71,33 +73,33 @@ def stub_client(monkeypatch):
     return client
 
 
-class RecordingConversationStore:
-    def __init__(self, initial_history: dict[str, builtins.list[dict]] | None = None) -> None:
-        self.appended: list[tuple[str, dict]] = []
-        self._history: dict[str, list[dict]] = {
-            name: [dict(message) for message in messages] for name, messages in (initial_history or {}).items()
+class RecordingTapeStore:
+    def __init__(self, initial_tapes: dict[str, builtins.list[TapeEntry]] | None = None) -> None:
+        self.appended: list[tuple[str, TapeEntry]] = []
+        self._tapes: dict[str, list[TapeEntry]] = {
+            name: [entry.copy() for entry in entries] for name, entries in (initial_tapes or {}).items()
         }
 
-    def seed(self, name: str, messages: builtins.list[dict]) -> None:
-        self._history[name] = [dict(message) for message in messages]
+    def seed(self, name: str, entries: builtins.list[TapeEntry]) -> None:
+        self._tapes[name] = [entry.copy() for entry in entries]
 
-    def list(self) -> builtins.list[str]:
-        return sorted(self._history.keys())
+    def list_tapes(self) -> builtins.list[str]:
+        return sorted(self._tapes.keys())
 
     def reset(self, name: str) -> None:
-        self._history.pop(name, None)
+        self._tapes.pop(name, None)
 
-    def get(self, name: str):
-        history = self._history.get(name)
-        if history is None:
+    def read(self, name: str):
+        entries = self._tapes.get(name)
+        if entries is None:
             return None
-        return [dict(message) for message in history]
+        return [entry.copy() for entry in entries]
 
-    def append(self, name: str, message: dict) -> None:
-        self.appended.append((name, message))
-        self._history.setdefault(name, []).append(dict(message))
+    def append(self, name: str, entry: TapeEntry) -> None:
+        self.appended.append((name, entry.copy()))
+        self._tapes.setdefault(name, []).append(entry.copy())
 
 
 @pytest.fixture
-def recording_store() -> RecordingConversationStore:
-    return RecordingConversationStore()
+def recording_tape_store() -> RecordingTapeStore:
+    return RecordingTapeStore()

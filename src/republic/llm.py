@@ -14,9 +14,9 @@ from republic.clients.batch import BatchClient
 from republic.clients.chat import ChatClient
 from republic.clients.responses import ResponsesClient
 from republic.clients.text import TextClient
-from republic.core.conversations import ConversationStore
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
+from republic.tape import HandoffHandler, HandoffPolicy, Tape, TapeContext, TapeStore
 from republic.core.telemetry import span as logfire_span
 from republic.tools.executor import ToolExecutor
 
@@ -35,7 +35,10 @@ class LLM:
         api_base: str | dict[str, str] | None = None,
         client_args: dict[str, Any] | None = None,
         verbose: int = 0,
-        conversation_store: ConversationStore | None = None,
+        tape_store: TapeStore | None = None,
+        context: TapeContext | None = None,
+        handoff_handler: HandoffHandler | None = None,
+        handoff_policy: HandoffPolicy | None = None,
         error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
         if verbose not in (0, 1, 2):
@@ -62,7 +65,14 @@ class LLM:
             error_classifier=error_classifier,
         )
         tool_executor = ToolExecutor(span=self._span)
-        self.chat: ChatClient = ChatClient(self._core, tool_executor, store=conversation_store)
+        self.chat: ChatClient = ChatClient(
+            self._core,
+            tool_executor,
+            store=tape_store,
+            context=context,
+            handoff_handler=handoff_handler,
+            handoff_policy=handoff_policy,
+        )
         self.responses: ResponsesClient = ResponsesClient(self._core)
         self.batch: BatchClient = BatchClient(self._core)
         self.tools: ToolExecutor = tool_executor
@@ -98,6 +108,25 @@ class LLM:
     @property
     def fallback_models(self) -> list[str]:
         return self._core.fallback_models
+
+    @property
+    def context(self) -> TapeContext:
+        return self.chat._default_context
+
+    @context.setter
+    def context(self, value: TapeContext) -> None:
+        self.chat._set_default_context(value)
+
+    def tape(
+        self,
+        name: str,
+        *,
+        context: TapeContext | None = None,
+    ) -> Tape:
+        return Tape(name, self.chat, context=context)
+
+    def tapes(self) -> list[str]:
+        return self.chat._list_tapes()
 
     def embedding(
         self,

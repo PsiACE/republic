@@ -5,7 +5,8 @@ from typing import Any
 import pytest
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 
-from republic import LLM, ErrorKind, RepublicError, ToolSet, tool
+from republic import LLM, ToolSet, tool
+from republic.core import ErrorKind, RepublicError
 
 
 def _make_tool_call_response() -> ChatCompletion:
@@ -157,66 +158,6 @@ class TestChatTools:
         assert list(llm.chat.tools_auto_stream("Weather?", tools=[get_weather])) == ["Weather in Tokyo is sunny"]
 
 
-class TestChatConversationUpdates:
-    def test_conversation_updates_with_text(self, stub_client):
-        stub_client.completion.return_value = "Hello"
-        llm = LLM(model="openai:gpt-4o-mini")
-
-        assert llm.chat.create("Hi", conversation="conv") == "Hello"
-        history = llm.chat.get_history("conv")
-        assert history is not None
-        assert history[-1]["role"] == "assistant"
-        assert history[-1]["content"] == "Hello"
-
-    def test_conversation_updates_with_tool_result(self, stub_client):
-        stub_client.completion.return_value = _make_tool_call_response()
-
-        @tool
-        def get_weather(location: str) -> str:
-            """Get the weather for a location."""
-            return f"Weather in {location} is sunny"
-
-        llm = LLM(model="openai:gpt-4o-mini")
-        assert llm.chat.tools_auto("Weather?", tools=[get_weather], conversation="conv") == "Weather in Tokyo is sunny"
-        history = llm.chat.get_history("conv")
-        assert history is not None
-        assert history[-1]["role"] == "assistant"
-        assert history[-1]["content"] == "Weather in Tokyo is sunny"
-
-    def test_conversation_updates_with_tool_result_stream(self, stub_client):
-        stub_client.completion.return_value = iter(_make_tool_call_stream())
-
-        @tool
-        def get_weather(location: str) -> str:
-            """Get the weather for a location."""
-            return f"Weather in {location} is sunny"
-
-        llm = LLM(model="openai:gpt-4o-mini")
-        result = list(llm.chat.tools_auto_stream("Weather?", tools=[get_weather], conversation="conv"))
-        assert result == ["Weather in Tokyo is sunny"]
-        history = llm.chat.get_history("conv")
-        assert history is not None
-        assert history[-1]["role"] == "assistant"
-        assert history[-1]["content"] == "Weather in Tokyo is sunny"
-
-    def test_tools_auto_stream_prefers_text_for_conversation(self, stub_client):
-        stub_client.completion.return_value = iter(_make_mixed_tool_text_stream())
-
-        @tool
-        def get_weather(location: str) -> str:
-            """Get the weather for a location."""
-            return f"Weather in {location} is sunny"
-
-        llm = LLM(model="openai:gpt-4o-mini")
-        chunks = list(llm.chat.tools_auto_stream("Weather?", tools=[get_weather], conversation="conv"))
-
-        assert chunks == ["Hel", "lo", "Weather in Tokyo is sunny"]
-        history = llm.chat.get_history("conv")
-        assert history is not None
-        assert history[-1]["role"] == "assistant"
-        assert history[-1]["content"] == "Hello"
-
-
 class TestChatValidation:
     def test_chat_rejects_tools_kwarg(self, stub_client):
         stub_client.completion.return_value = "Hello"
@@ -269,10 +210,10 @@ class TestChatValidation:
             llm.chat.create(messages=[{"role": "user", "content": "hi"}], images="http://example.com/image.png")
         assert exc_info.value.kind == ErrorKind.INVALID_INPUT
 
-    def test_messages_disallow_conversation(self):
+    def test_messages_disallow_tape(self):
         llm = LLM(model="openai:gpt-4o-mini")
         with pytest.raises(RepublicError) as exc_info:
-            llm.chat.create(messages=[{"role": "user", "content": "hi"}], conversation="conv")
+            llm.chat.create(messages=[{"role": "user", "content": "hi"}], tape="conv")
         assert exc_info.value.kind == ErrorKind.INVALID_INPUT
 
     def test_auto_call_tools_requires_tools(self):
@@ -284,7 +225,7 @@ class TestChatValidation:
 
 class TestChatAsync:
     @pytest.mark.asyncio
-    async def test_async_tools_auto_stream_updates_conversation(self, stub_client):
+    async def test_async_tools_auto_stream_updates_tape(self, stub_client):
         stub_client.acompletion.return_value = _async_iter(_make_tool_call_stream())
 
         @tool
@@ -293,13 +234,13 @@ class TestChatAsync:
             return f"Weather in {location} is sunny"
 
         llm = LLM(model="openai:gpt-4o-mini")
+        tape = llm.tape("conv")
 
-        stream = await llm.chat.atools_auto_stream("Weather?", tools=[get_weather], conversation="conv")
+        stream = await tape.atools_auto_stream("Weather?", tools=[get_weather])
         chunks = []
         async for chunk in stream:
             chunks.append(chunk)
         assert chunks == ["Weather in Tokyo is sunny"]
-        history = llm.chat.get_history("conv")
-        assert history is not None
+        history = tape.messages()
         assert history[-1]["role"] == "assistant"
         assert history[-1]["content"] == "Weather in Tokyo is sunny"
