@@ -729,6 +729,7 @@ print(result)
 print(result)
 </code></pre>
 <h2 id="typed-tools-and-schemas">Typed Tools and Schemas<a class="headerlink" href="#typed-tools-and-schemas" title="Permanent link">&para;</a></h2>
+<p>Note: Schema-only and runnable tools must use distinct <code>name</code> values to avoid conflicts.</p>
 <pre><code class="language-python">from pydantic import BaseModel
 from republic import ToolSet, schema_from_model, tool_from_model
 
@@ -737,12 +738,12 @@ class WeatherSchema(BaseModel):
 
     location: str
 
-tool_schema = schema_from_model(WeatherSchema)
+tool_schema = schema_from_model(WeatherSchema, name=&quot;weather_schema&quot;)
 
 def handle_weather(payload: WeatherSchema) -&gt; str:
     return f&quot;Weather in {payload.location} is sunny&quot;
 
-typed_tool = tool_from_model(WeatherSchema, handle_weather)
+typed_tool = tool_from_model(WeatherSchema, handle_weather, name=&quot;weather_tool&quot;)
 
 toolset = ToolSet.from_tools([tool_schema, typed_tool])
 print(toolset.payload)
