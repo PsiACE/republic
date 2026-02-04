@@ -6,7 +6,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/psiace/republic)](https://img.shields.io/github/commit-activity/m/psiace/republic)
 [![License](https://img.shields.io/github/license/psiace/republic)](https://img.shields.io/github/license/psiace/republic)
 
-A minimal, explicit LLM client and router built on top of Mozilla's any-llm.
+An explicit LLM client and router with append-only history and controllable context.
 
 Republic has one state primitive: a tape. A tape is an append-only log of messages and anchors.
 You decide what goes into context, where a phase starts, and how handoff works. No hidden memory.
@@ -23,7 +23,9 @@ Visit https://getrepublic.org for concepts, guides, and API reference.
 - Streaming-first ergonomics
 - Clear extension points for storage and observability
 
-This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai); we hope you like it too.
+We like LitAI's pragmatic feel. Republic is derived from it, and we hope you like it too.
+
+This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai).
 
 ## Requirements
 

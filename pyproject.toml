@@ -1,7 +1,7 @@
 [project]
 name = "republic"
 version = "0.2.0"
-description = "Tape-first, explicit LLM client and router built on any-llm."
+description = "Explicit LLM client and router with append-only history and controllable context."
 authors = [{ name = "Chojan Shang", email = "psiace@apache.org" }]
 readme = "README.md"
 keywords = [

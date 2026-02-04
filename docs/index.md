@@ -1,6 +1,6 @@
 # republic
 
-Republic is a minimal, explicit LLM client and router built on top of Mozilla's any-llm.
+Republic is an explicit LLM client and router with append-only history and controllable context.
 
 It gives you one state primitive: a tape. A tape is an append-only log of messages and anchors.
 You decide what goes into context and where a phase starts. No hidden memory.
@@ -8,7 +8,7 @@ You decide what goes into context and where a phase starts. No hidden memory.
 The mental model comes from punch tape: a linear record that you can slice into deterministic context windows.
 That makes handoff and audit simple while keeping the API small.
 
-If you've used Lightning AI's LitAI, Republic keeps the pragmatic feel but makes tape first-class.
+We like LitAI's pragmatic feel. Republic is derived from it, and we hope you like it too.
 
 ## Getting Started
 
