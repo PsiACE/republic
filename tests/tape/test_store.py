@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from republic import LLM, TapeEntry
-from republic.tape import InMemoryTapeStore
 
 
 class TestTapeStore:

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from .entries import TapeEntry
 
@@ -17,7 +18,7 @@ class TapeContext:
     """
 
     anchor: str | None = "last"
-    select: Callable[[Sequence[TapeEntry], "TapeContext"], list[dict[str, Any]]] | None = None
+    select: Callable[[Sequence[TapeEntry], TapeContext], list[dict[str, Any]]] | None = None
 
 
 def build_messages(entries: Sequence[TapeEntry], context: TapeContext) -> list[dict[str, Any]]:

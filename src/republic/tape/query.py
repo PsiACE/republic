@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
 
 from .entries import TapeEntry
 from .store import TapeStore
@@ -90,10 +90,7 @@ class TapeQuery:
 
 
 def _anchor_index(entries: Sequence[TapeEntry], name: str | None, *, default: int, forward: bool) -> int:
-    if forward:
-        rng = range(len(entries))
-    else:
-        rng = range(len(entries) - 1, -1, -1)
+    rng = range(len(entries)) if forward else range(len(entries) - 1, -1, -1)
     for idx in rng:
         entry = entries[idx]
         if entry.kind != "anchor":

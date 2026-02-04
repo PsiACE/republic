@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator, Sequence
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk, ReasoningEffort
 

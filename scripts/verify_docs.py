@@ -4,7 +4,9 @@ import json
 import os
 import pathlib
 import sys
-from typing import Any, Callable
+import tempfile
+from collections.abc import Callable
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -23,10 +25,44 @@ class CheckFailure(Exception):
     pass
 
 
+class MissingEnvError(CheckFailure):
+    def __init__(self, key: str) -> None:
+        self.key = key
+        super().__init__(key)
+
+    def __str__(self) -> str:
+        return f"{self.key} is missing from the environment"
+
+
+class ToolCallsMissing(CheckFailure):
+    def __str__(self) -> str:
+        return "no tool calls returned"
+
+
+class ToolResultMissing(CheckFailure):
+    def __str__(self) -> str:
+        return "tool result missing"
+
+
+class ToolsAutoMissing(CheckFailure):
+    def __str__(self) -> str:
+        return "auto tools returned no result"
+
+
+class TapeToolsMissing(CheckFailure):
+    def __str__(self) -> str:
+        return "tape tools returned no result"
+
+
+class ResponsesStreamEmpty(CheckFailure):
+    def __str__(self) -> str:
+        return "responses.stream returned no events"
+
+
 def require_env(key: str) -> str:
     value = os.environ.get(key)
     if not value:
-        raise CheckFailure(f"{key} is missing from the environment")
+        raise MissingEnvError(key)
     return value
 
 
@@ -45,7 +81,7 @@ def log(name: str, status: str, detail: str = "") -> None:
 def run_check(name: str, fn: Callable[[], Any], failures: list[tuple[str, Exception]]) -> None:
     try:
         result = fn()
-    except Exception as exc:  # noqa: BLE001 - explicit reporting
+    except Exception as exc:
         failures.append((name, exc))
         log(name, "fail", f"{type(exc).__name__}: {exc}")
     else:
@@ -164,8 +200,11 @@ def check_tools_manual(llm: LLM) -> str:
         return f"Weather in {location} is sunny"
 
     tool_calls = llm.chat.tool_calls("What's the weather in Tokyo?", tools=[get_weather])
-    assert_true(tool_calls, "no tool calls returned")
+    if not tool_calls:
+        raise ToolCallsMissing
     result = llm.tools.execute(tool_calls, tools=[get_weather])
+    if result is None:
+        raise ToolResultMissing
     assert_true("Tokyo" in result, "manual tool result missing location")
     return result
 
@@ -177,6 +216,8 @@ def check_tools_auto(llm: LLM) -> str:
         return f"Weather in {location} is sunny"
 
     result = llm.chat.tools_auto("What's the weather in Tokyo?", tools=[get_weather])
+    if result is None:
+        raise ToolsAutoMissing
     assert_true("Tokyo" in result, "auto tools did not use tool result")
     return result
 
@@ -189,6 +230,8 @@ def check_tape_tools_auto(llm: LLM) -> str:
 
     tape = llm.tape("docs-tools")
     result = tape.tools_auto("What's the weather in Tokyo?", tools=[get_weather])
+    if result is None:
+        raise TapeToolsMissing
     assert_true("Tokyo" in result, "tape tools auto did not use tool result")
     return result
 
@@ -201,22 +244,27 @@ def check_responses(llm: LLM) -> str:
 
 def check_responses_stream(llm: LLM) -> str:
     events = list(llm.responses.stream("Reply with OK."))
-    assert_true(events, "responses.stream returned no events")
+    if not events:
+        raise ResponsesStreamEmpty
     return f"events={len(events)}"
 
 
 def check_batch(llm: LLM) -> str:
-    path = pathlib.Path("/tmp/republic_batch.jsonl")
     payload = {
         "custom_id": "req-1",
         "method": "POST",
         "url": "/v1/chat/completions",
         "body": {"model": "openrouter/free", "messages": [{"role": "user", "content": "OK"}]},
     }
-    path.write_text(json.dumps(payload) + "\n")
-    job = llm.batch.create(input_file_path=str(path), endpoint="/v1/chat/completions")
-    assert_true(job is not None, "batch.create returned None")
-    return "batch ok"
+    with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as handle:
+        path = pathlib.Path(handle.name)
+        handle.write(json.dumps(payload) + "\n")
+    try:
+        job = llm.batch.create(input_file_path=str(path), endpoint="/v1/chat/completions")
+        assert_true(job is not None, "batch.create returned None")
+        return "batch ok"
+    finally:
+        path.unlink(missing_ok=True)
 
 
 def check_error_types(api_key: str, model: str, headers: dict[str, str]) -> str:

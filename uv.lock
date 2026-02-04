@@ -1139,7 +1139,7 @@ wheels = [
 
 [[package]]
 name = "republic"
-version = "0.0.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "any-llm-sdk" },

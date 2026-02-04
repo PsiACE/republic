@@ -16,8 +16,8 @@ from republic.clients.responses import ResponsesClient
 from republic.clients.text import TextClient
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
-from republic.tape import HandoffHandler, HandoffPolicy, Tape, TapeContext, TapeStore
 from republic.core.telemetry import span as logfire_span
+from republic.tape import HandoffHandler, HandoffPolicy, Tape, TapeContext, TapeStore
 from republic.tools.executor import ToolExecutor
 
 
