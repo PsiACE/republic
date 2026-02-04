@@ -9,13 +9,22 @@ copyright: Maintained by <a href="https://psiace.com">psiace</a>.
 
 nav:
   - Home: index.md
+  - Getting Started: getting-started.md
+  - Chat: chat.md
+  - Tools: tools.md
+  - Responses: responses.md
+  - Batch: batch.md
+  - Conversation Storage: storage.md
+  - Error Handling: errors.md
+  - Observability: observability.md
   - Modules: modules.md
 plugins:
   - search
   - mkdocstrings:
       handlers:
         python:
-          paths: ["src/republic"]
+          paths: ["src"]
+
 theme:
   name: material
   feature:

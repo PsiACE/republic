@@ -6,69 +6,45 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/psiace/republic)](https://img.shields.io/github/commit-activity/m/psiace/republic)
 [![License](https://img.shields.io/github/license/psiace/republic)](https://img.shields.io/github/license/psiace/republic)
 
-The minimalistic AI stack for developers who value freedom and efficiency.
+A minimal, explicit LLM router and agent toolkit built on top of Mozilla's any-llm.
 
-- **Github repository**: <https://github.com/psiace/republic/>
-- **Documentation** <https://psiace.github.io/republic/>
+- Small surface area with predictable behavior
+- Provider-agnostic routing and fallbacks
+- Typed tools with optional auto-execution
+- Streaming-first ergonomics
+- Clear extension points for storage and observability
 
-## Getting started with your project
-
-### 1. Create a New Repository
-
-First, create a repository on GitHub with the same name as this project, and then run the following commands:
-
-```bash
-git init -b main
-git add .
-git commit -m "init commit"
-git remote add origin git@github.com:psiace/republic.git
-git push -u origin main
-```
-
-### 2. Set Up Your Development Environment
-
-Then, install the environment and the pre-commit hooks with
+## Installation
 
 ```bash
-make install
+pip install republic
 ```
 
-This will also generate your `uv.lock` file
+## Quick Start
 
-### 3. Run the pre-commit hooks
+```python
+from republic import LLM
 
-Initially, the CI/CD pipeline might be failing due to formatting issues. To resolve those run:
-
-```bash
-uv run pre-commit run -a
+llm = LLM(model="openai:gpt-4o-mini", api_key="<OPENAI_API_KEY>")
+print(llm.chat.create("Who are you?"))
+print(llm.chat("Who are you?"))
 ```
 
-### 4. Commit the changes
+Use `provider:model` when overriding:
 
-Lastly, commit the changes made by the two steps above to your repository.
+```python
+from republic import LLM
 
-```bash
-git add .
-git commit -m 'Fix formatting issues'
-git push origin main
+llm = LLM(provider="openai", model="gpt-4o-mini", api_key="<OPENAI_API_KEY>")
+print(llm.chat.create("Summarize this in one sentence."))
 ```
 
-You are now ready to start development on your project!
-The CI/CD pipeline will be triggered when you open a pull request, merge to main, or when you create a new release.
+Note: Republic only accepts `provider:model`.
 
-To finalize the set-up for publishing to PyPI, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/publishing/#set-up-for-pypi).
-For activating the automatic documentation with MkDocs, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/mkdocs/#enabling-the-documentation-on-github).
-To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/codecov/).
+## Development
 
-## Releasing a new version
+See `CONTRIBUTING.md` for local setup, testing, and release guidance.
 
-- Create an API Token on [PyPI](https://pypi.org/).
-- Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting [this page](https://github.com/psiace/republic/settings/secrets/actions/new).
-- Create a [new release](https://github.com/psiace/republic/releases/new) on Github.
-- Create a new tag in the form `*.*.*`.
+## License
 
-For more details, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).
-
----
-
-Repository initiated with [fpgmaas/cookiecutter-uv](https://github.com/fpgmaas/cookiecutter-uv).
+Apache 2.0

@@ -1,8 +1,18 @@
 # republic
 
-[![Release](https://img.shields.io/github/v/release/psiace/republic)](https://img.shields.io/github/v/release/psiace/republic)
-[![Build status](https://img.shields.io/github/actions/workflow/status/psiace/republic/main.yml?branch=main)](https://github.com/psiace/republic/actions/workflows/main.yml?query=branch%3Amain)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/psiace/republic)](https://img.shields.io/github/commit-activity/m/psiace/republic)
-[![License](https://img.shields.io/github/license/psiace/republic)](https://img.shields.io/github/license/psiace/republic)
+A minimal, explicit LLM router and agent toolkit built on top of Mozilla's any-llm.
 
-The minimalistic AI stack for developers who value freedom and efficiency.
+## Getting Started
+
+Start here: [Getting Started](getting-started.md)
+
+## Topics
+
+- [Chat](chat.md)
+- [Tools](tools.md)
+- [Responses](responses.md)
+- [Batch](batch.md)
+- [Conversation Storage](storage.md)
+- [Error Handling](errors.md)
+- [Observability](observability.md)
+- [Modules](modules.md)
