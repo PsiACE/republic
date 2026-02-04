@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from textwrap import dedent
-from typing import Any, List, Protocol
+from typing import Any, Protocol
 
 from republic.core.errors import ErrorKind, RepublicError
 
 
 class ChatCaller(Protocol):
-    def create(self, prompt: str, **kwargs: Any) -> str:
-        ...
+    def create(self, prompt: str, **kwargs: Any) -> str: ...
 
 
 class TextClient:
@@ -39,7 +38,7 @@ class TextClient:
         response = self._chat.create(prompt)
         return "yes" in response.strip().lower()
 
-    def classify(self, input_text: str, choices: List[str]) -> str:
+    def classify(self, input_text: str, choices: list[str]) -> str:
         if not choices:
             raise RepublicError(ErrorKind.INVALID_INPUT, "choices must not be empty.")
         normalized_choices = [choice.strip().lower() for choice in choices]

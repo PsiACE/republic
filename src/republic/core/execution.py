@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
+from collections.abc import Callable
+from typing import Any, NoReturn
 
 from any_llm import AnyLLM
 from any_llm.exceptions import (
@@ -35,14 +36,14 @@ class LLMCore:
         *,
         provider: str,
         model: str,
-        fallback_models: List[str],
+        fallback_models: list[str],
         max_retries: int,
-        api_key: Optional[str | Dict[str, str]],
-        api_base: Optional[str | Dict[str, str]],
-        client_args: Dict[str, Any],
+        api_key: str | dict[str, str] | None,
+        api_base: str | dict[str, str] | None,
+        client_args: dict[str, Any],
         verbose: int,
         span: Callable[..., Any],
-        error_classifier: Optional[Callable[[Exception], Optional[ErrorKind]]] = None,
+        error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
@@ -54,7 +55,7 @@ class LLMCore:
         self._verbose = verbose
         self._span = span
         self._error_classifier = error_classifier
-        self._client_cache: Dict[str, AnyLLM] = {}
+        self._client_cache: dict[str, AnyLLM] = {}
 
     @property
     def provider(self) -> str:
@@ -65,7 +66,7 @@ class LLMCore:
         return self._model
 
     @property
-    def fallback_models(self) -> List[str]:
+    def fallback_models(self) -> list[str]:
         return self._fallback_models
 
     @property
@@ -79,7 +80,7 @@ class LLMCore:
         return self._span(name, **attributes)
 
     @staticmethod
-    def resolve_model_provider(model: str, provider: Optional[str]) -> Tuple[str, str]:
+    def resolve_model_provider(model: str, provider: str | None) -> tuple[str, str]:
         if provider:
             if ":" in model:
                 raise RepublicError(
@@ -96,7 +97,7 @@ class LLMCore:
             raise RepublicError(ErrorKind.INVALID_INPUT, "Model must be in 'provider:model' format.")
         return provider_name, model_id
 
-    def resolve_fallback(self, model: str) -> Tuple[str, str]:
+    def resolve_fallback(self, model: str) -> tuple[str, str]:
         if ":" in model:
             provider_name, model_id = model.split(":", 1)
             if not provider_name or not model_id:
@@ -109,7 +110,7 @@ class LLMCore:
             "Fallback models must include provider or LLM must be initialized with a provider.",
         )
 
-    def model_candidates(self, override_model: Optional[str], override_provider: Optional[str]) -> List[Tuple[str, str]]:
+    def model_candidates(self, override_model: str | None, override_provider: str | None) -> list[tuple[str, str]]:
         if override_model:
             provider, model = self.resolve_model_provider(override_model, override_provider)
             return [(provider, model)]
@@ -119,21 +120,21 @@ class LLMCore:
             candidates.append(self.resolve_fallback(model))
         return candidates
 
-    def iter_clients(self, override_model: Optional[str], override_provider: Optional[str]):
+    def iter_clients(self, override_model: str | None, override_provider: str | None):
         for provider_name, model_id in self.model_candidates(override_model, override_provider):
             yield provider_name, model_id, self.get_client(provider_name)
 
-    def _resolve_api_key(self, provider: str) -> Optional[str]:
+    def _resolve_api_key(self, provider: str) -> str | None:
         if isinstance(self._api_key, dict):
             return self._api_key.get(provider)
         return self._api_key
 
-    def _resolve_api_base(self, provider: str) -> Optional[str]:
+    def _resolve_api_base(self, provider: str) -> str | None:
         if isinstance(self._api_base, dict):
             return self._api_base.get(provider)
         return self._api_base
 
-    def _freeze_cache_key(self, provider: str, api_key: Optional[str], api_base: Optional[str]) -> str:
+    def _freeze_cache_key(self, provider: str, api_key: str | None, api_base: str | None) -> str:
         def _freeze(value: Any) -> Any:
             if isinstance(value, (str, int, float, bool)) or value is None:
                 return value
@@ -187,6 +188,7 @@ class LLMCore:
                     return kind
         try:
             from pydantic import ValidationError as PydanticValidationError
+
             validation_error_type: type[Exception] | None = PydanticValidationError
         except ImportError:
             validation_error_type = None
@@ -232,19 +234,19 @@ class LLMCore:
     def run_chat_sync(
         self,
         *,
-        messages_payload: List[Dict[str, Any]],
-        tools_payload: Optional[List[Dict[str, Any]]],
-        model: Optional[str],
-        provider: Optional[str],
-        max_tokens: Optional[int],
+        messages_payload: list[dict[str, Any]],
+        tools_payload: list[dict[str, Any]] | None,
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
         stream: bool,
-        reasoning_effort: Optional[Any],
+        reasoning_effort: Any | None,
         tool_count: int,
-        kwargs: Dict[str, Any],
+        kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
     ) -> Any:
-        last_provider: Optional[str] = None
-        last_model: Optional[str] = None
+        last_provider: str | None = None
+        last_model: str | None = None
         for provider_name, model_id, client in self.iter_clients(model, provider):
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
@@ -266,12 +268,13 @@ class LLMCore:
                             reasoning_effort=reasoning_effort,
                             **kwargs,
                         )
+                except Exception as exc:
+                    self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                else:
                     result = on_response(response, provider_name, model_id, attempt)
                     if result is self.RETRY:
                         continue
                     return result
-                except Exception as exc:
-                    self._handle_attempt_error(exc, provider_name, model_id, attempt)
 
         if last_provider and last_model:
             raise RepublicError(
@@ -283,19 +286,19 @@ class LLMCore:
     async def run_chat_async(
         self,
         *,
-        messages_payload: List[Dict[str, Any]],
-        tools_payload: Optional[List[Dict[str, Any]]],
-        model: Optional[str],
-        provider: Optional[str],
-        max_tokens: Optional[int],
+        messages_payload: list[dict[str, Any]],
+        tools_payload: list[dict[str, Any]] | None,
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
         stream: bool,
-        reasoning_effort: Optional[Any],
+        reasoning_effort: Any | None,
         tool_count: int,
-        kwargs: Dict[str, Any],
+        kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
     ) -> Any:
-        last_provider: Optional[str] = None
-        last_model: Optional[str] = None
+        last_provider: str | None = None
+        last_model: str | None = None
         for provider_name, model_id, client in self.iter_clients(model, provider):
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
@@ -317,12 +320,13 @@ class LLMCore:
                             reasoning_effort=reasoning_effort,
                             **kwargs,
                         )
+                except Exception as exc:
+                    self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                else:
                     result = on_response(response, provider_name, model_id, attempt)
                     if result is self.RETRY:
                         continue
                     return result
-                except Exception as exc:
-                    self._handle_attempt_error(exc, provider_name, model_id, attempt)
 
         if last_provider and last_model:
             raise RepublicError(

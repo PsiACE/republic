@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, Iterator, List, Optional, Sequence
+from typing import Any
 
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage, ReasoningEffort
 
@@ -13,26 +14,26 @@ from republic.core.execution import LLMCore
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput, ToolSet, normalize_tools
 
-MessageInput = Dict[str, Any] | ChatCompletionMessage
+MessageInput = dict[str, Any] | ChatCompletionMessage
 
 
 @dataclass(frozen=True)
 class PreparedChat:
-    payload: List[Dict[str, Any]]
-    new_messages: List[Dict[str, Any]]
+    payload: list[dict[str, Any]]
+    new_messages: list[dict[str, Any]]
     toolset: ToolSet
-    conversation: Optional[str]
+    conversation: str | None
     should_update: bool
 
     @property
-    def tools_payload(self) -> Optional[List[Dict[str, Any]]]:
+    def tools_payload(self) -> list[dict[str, Any]] | None:
         return self.toolset.payload
 
 
 @dataclass
 class _StreamState:
-    collected: List[str] = field(default_factory=list)
-    tool_state: Dict[int, Dict[str, Any]] = field(default_factory=dict)
+    collected: list[str] = field(default_factory=list)
+    tool_state: dict[int, dict[str, Any]] = field(default_factory=dict)
 
     def text(self) -> str:
         return "".join(self.collected)
@@ -45,13 +46,13 @@ class ChatClient:
         self,
         core: LLMCore,
         tool_executor: ToolExecutor,
-        store: Optional[ConversationStore] = None,
+        store: ConversationStore | None = None,
     ) -> None:
         self._core = core
         self._tool_executor = tool_executor
         self._store = store or InMemoryConversationStore()
 
-    def _reject_reserved_kwargs(self, kwargs: Dict[str, Any], *reserved: str) -> None:
+    def _reject_reserved_kwargs(self, kwargs: dict[str, Any], *reserved: str) -> None:
         for key in reserved:
             if key in kwargs:
                 raise RepublicError(ErrorKind.INVALID_INPUT, f"'{key}' is not supported in this method.")
@@ -59,11 +60,11 @@ class ChatClient:
     def _validate_chat_input(
         self,
         *,
-        prompt: Optional[str],
-        messages: Optional[List[MessageInput]],
-        system_prompt: Optional[str],
-        images: Optional[Sequence[str] | str],
-        conversation: Optional[str],
+        prompt: str | None,
+        messages: list[MessageInput] | None,
+        system_prompt: str | None,
+        images: Sequence[str] | str | None,
+        conversation: str | None,
     ) -> None:
         if prompt is not None and messages is not None:
             raise RepublicError(
@@ -99,12 +100,12 @@ class ChatClient:
 
     def _prepare_messages(
         self,
-        prompt: Optional[str],
-        system_prompt: Optional[str],
-        images: Optional[Sequence[str] | str],
-        conversation: Optional[str],
-        messages: Optional[List[MessageInput]],
-    ) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        prompt: str | None,
+        system_prompt: str | None,
+        images: Sequence[str] | str | None,
+        conversation: str | None,
+        messages: list[MessageInput] | None,
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         self._validate_chat_input(
             prompt=prompt,
             messages=messages,
@@ -134,7 +135,7 @@ class ChatClient:
             return [user_message], []
 
         history = self._store.get(conversation) or []
-        new_messages: List[Dict[str, Any]] = []
+        new_messages: list[dict[str, Any]] = []
         if system_prompt and not any(msg.get("role") == "system" for msg in history):
             new_messages.append({"role": "system", "content": system_prompt})
         new_messages.append(user_message)
@@ -143,11 +144,11 @@ class ChatClient:
     def _prepare_request(
         self,
         *,
-        prompt: Optional[str],
-        system_prompt: Optional[str],
-        images: Optional[Sequence[str] | str],
-        conversation: Optional[str],
-        messages: Optional[List[MessageInput]],
+        prompt: str | None,
+        system_prompt: str | None,
+        images: Sequence[str] | str | None,
+        conversation: str | None,
+        messages: list[MessageInput] | None,
         tools: ToolInput,
         require_tools: bool = False,
         require_runnable: bool = False,
@@ -190,7 +191,7 @@ class ChatClient:
             return message.content or ""
         return ""
 
-    def _extract_tool_calls(self, response: Any) -> List[Dict[str, Any]]:
+    def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
         if not isinstance(response, ChatCompletion):
             return []
         if not response.choices:
@@ -225,7 +226,7 @@ class ChatClient:
         return self._core.RETRY
 
     @staticmethod
-    def _accumulate_tool_calls(tool_state: Dict[int, Dict[str, Any]], tool_calls: Sequence[Any]) -> None:
+    def _accumulate_tool_calls(tool_state: dict[int, dict[str, Any]], tool_calls: Sequence[Any]) -> None:
         for tool_call in tool_calls:
             index = getattr(tool_call, "index", None)
             if index is None:
@@ -250,7 +251,7 @@ class ChatClient:
                 entry["function"]["arguments"] += arguments
 
     @staticmethod
-    def _finalize_tool_calls(tool_state: Dict[int, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _finalize_tool_calls(tool_state: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
         return [tool_state[idx] for idx in sorted(tool_state)]
 
     def _handle_chunk(self, chunk: ChatCompletionChunk, state: _StreamState) -> str:
@@ -274,19 +275,19 @@ class ChatClient:
         except TypeError as exc:
             raise RepublicError(ErrorKind.INVALID_INPUT, str(exc)).with_cause(exc) from exc
 
-    def __call__(self, prompt: Optional[str] = None, **kwargs: Any) -> str:
+    def __call__(self, prompt: str | None = None, **kwargs: Any) -> str:
         return self.create(prompt, **kwargs)
 
     def _run_sync(
         self,
         prepared: PreparedChat,
         *,
-        model: Optional[str],
-        provider: Optional[str],
-        max_tokens: Optional[int],
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
         stream: bool,
-        reasoning_effort: Optional[ReasoningEffort],
-        kwargs: Dict[str, Any],
+        reasoning_effort: ReasoningEffort | None,
+        kwargs: dict[str, Any],
         on_response: Any,
     ) -> Any:
         return self._core.run_chat_sync(
@@ -306,12 +307,12 @@ class ChatClient:
         self,
         prepared: PreparedChat,
         *,
-        model: Optional[str],
-        provider: Optional[str],
-        max_tokens: Optional[int],
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
         stream: bool,
-        reasoning_effort: Optional[ReasoningEffort],
-        kwargs: Dict[str, Any],
+        reasoning_effort: ReasoningEffort | None,
+        kwargs: dict[str, Any],
         on_response: Any,
     ) -> Any:
         return await self._core.run_chat_async(
@@ -373,7 +374,7 @@ class ChatClient:
         model: str,
     ) -> Iterator[str]:
         state = _StreamState()
-        tool_result: Optional[str] = None
+        tool_result: str | None = None
 
         with self._core.span("republic.llm.stream", provider=provider, model=model, tool_count=len(tools)):
             for chunk in response:
@@ -404,7 +405,7 @@ class ChatClient:
         model: str,
     ) -> AsyncIterator[str]:
         state = _StreamState()
-        tool_result: Optional[str] = None
+        tool_result: str | None = None
 
         with self._core.span("republic.llm.stream", provider=provider, model=model, tool_count=len(tools)):
             async for chunk in response:
@@ -427,16 +428,16 @@ class ChatClient:
 
     def create(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> str:
         self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
@@ -471,16 +472,16 @@ class ChatClient:
 
     def stream(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> Iterator[str]:
         self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
@@ -514,17 +515,17 @@ class ChatClient:
 
     def raw(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> ChatCompletion:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -553,17 +554,17 @@ class ChatClient:
 
     def stream_raw(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> Iterator[ChatCompletionChunk]:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -592,19 +593,19 @@ class ChatClient:
 
     def tool_calls(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
         prepared = self._prepare_request(
             prompt=prompt,
@@ -632,17 +633,17 @@ class ChatClient:
 
     def tools_auto(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> str:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -685,17 +686,17 @@ class ChatClient:
 
     def tools_auto_stream(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> Iterator[str]:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -732,16 +733,16 @@ class ChatClient:
 
     async def acreate(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> str:
         self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
@@ -776,16 +777,16 @@ class ChatClient:
 
     async def astream(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
@@ -819,17 +820,17 @@ class ChatClient:
 
     async def araw(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> ChatCompletion:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -858,17 +859,17 @@ class ChatClient:
 
     async def astream_raw(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[ChatCompletionChunk]:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -897,19 +898,19 @@ class ChatClient:
 
     async def atool_calls(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
         prepared = self._prepare_request(
             prompt=prompt,
@@ -937,17 +938,17 @@ class ChatClient:
 
     async def atools_auto(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> str:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -990,17 +991,17 @@ class ChatClient:
 
     async def atools_auto_stream(
         self,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
         *,
-        system_prompt: Optional[str] = None,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
-        messages: Optional[List[MessageInput]] = None,
-        max_tokens: Optional[int] = None,
-        images: Optional[Sequence[str] | str] = None,
-        conversation: Optional[str] = None,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        images: Sequence[str] | str | None = None,
+        conversation: str | None = None,
         tools: ToolInput = None,
-        reasoning_effort: Optional[ReasoningEffort] = None,
+        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
     ) -> AsyncIterator[str]:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
@@ -1038,10 +1039,10 @@ class ChatClient:
     def reset_conversation(self, name: str) -> None:
         self._store.reset(name)
 
-    def list_conversations(self) -> List[str]:
+    def list_conversations(self) -> list[str]:
         return self._store.list()
 
-    def get_history(self, name: str, raw: bool = False) -> Optional[List[Dict[str, Any]]]:
+    def get_history(self, name: str, raw: bool = False) -> list[dict[str, Any]] | None:
         history = self._store.get(name)
         if history is None:
             return None

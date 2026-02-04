@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import Enum
-from typing import Optional
 
 
 class ErrorKind(str, Enum):
@@ -30,10 +29,10 @@ class RepublicError(Exception):
 
     kind: ErrorKind
     message: str
-    cause: Optional[Exception] = None
+    cause: Exception | None = None
 
     def __str__(self) -> str:
         return f"[{self.kind.value}] {self.message}"
 
-    def with_cause(self, cause: Exception) -> "RepublicError":
+    def with_cause(self, cause: Exception) -> RepublicError:
         return replace(self, cause=cause)

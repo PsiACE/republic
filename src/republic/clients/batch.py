@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Dict, Optional, Sequence, TypeVar
+from collections.abc import Awaitable, Callable, Sequence
+from typing import Any, TypeVar
 
 from any_llm.types.batch import Batch
 
@@ -17,7 +18,7 @@ class BatchClient:
     def __init__(self, core: LLMCore) -> None:
         self._core = core
 
-    def _provider_name(self, provider: Optional[str]) -> str:
+    def _provider_name(self, provider: str | None) -> str:
         return provider or self._core.provider
 
     def _call(self, provider_name: str, name: str, fn: Callable[[], T], **attributes: Any) -> T:
@@ -26,7 +27,7 @@ class BatchClient:
                 return fn()
         except Exception as exc:
             self._core.raise_wrapped(exc, provider_name, "-")
-            raise AssertionError("unreachable")
+            raise AssertionError("unreachable") from exc
 
     async def _acall(self, provider_name: str, name: str, fn: Callable[[], Awaitable[T]], **attributes: Any) -> T:
         try:
@@ -34,16 +35,16 @@ class BatchClient:
                 return await fn()
         except Exception as exc:
             self._core.raise_wrapped(exc, provider_name, "-")
-            raise AssertionError("unreachable")
+            raise AssertionError("unreachable") from exc
 
     def create(
         self,
         input_file_path: str,
         endpoint: str,
         *,
-        provider: Optional[str] = None,
+        provider: str | None = None,
         completion_window: str = "24h",
-        metadata: Optional[Dict[str, str]] = None,
+        metadata: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> Batch:
         provider_name = self._provider_name(provider)
@@ -66,9 +67,9 @@ class BatchClient:
         input_file_path: str,
         endpoint: str,
         *,
-        provider: Optional[str] = None,
+        provider: str | None = None,
         completion_window: str = "24h",
-        metadata: Optional[Dict[str, str]] = None,
+        metadata: dict[str, str] | None = None,
         **kwargs: Any,
     ) -> Batch:
         provider_name = self._provider_name(provider)
@@ -86,7 +87,7 @@ class BatchClient:
             endpoint=endpoint,
         )
 
-    def retrieve(self, batch_id: str, *, provider: Optional[str] = None, **kwargs: Any) -> Batch:
+    def retrieve(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
         return self._call(
@@ -96,7 +97,7 @@ class BatchClient:
             batch_id=batch_id,
         )
 
-    async def aretrieve(self, batch_id: str, *, provider: Optional[str] = None, **kwargs: Any) -> Batch:
+    async def aretrieve(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
         return await self._acall(
@@ -106,7 +107,7 @@ class BatchClient:
             batch_id=batch_id,
         )
 
-    def cancel(self, batch_id: str, *, provider: Optional[str] = None, **kwargs: Any) -> Batch:
+    def cancel(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
         return self._call(
@@ -116,7 +117,7 @@ class BatchClient:
             batch_id=batch_id,
         )
 
-    async def acancel(self, batch_id: str, *, provider: Optional[str] = None, **kwargs: Any) -> Batch:
+    async def acancel(self, batch_id: str, *, provider: str | None = None, **kwargs: Any) -> Batch:
         provider_name = self._provider_name(provider)
         client = self._core.get_client(provider_name)
         return await self._acall(
@@ -129,9 +130,9 @@ class BatchClient:
     def list(
         self,
         *,
-        provider: Optional[str] = None,
-        after: Optional[str] = None,
-        limit: Optional[int] = None,
+        provider: str | None = None,
+        after: str | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> Sequence[Batch]:
         provider_name = self._provider_name(provider)
@@ -147,9 +148,9 @@ class BatchClient:
     async def alist(
         self,
         *,
-        provider: Optional[str] = None,
-        after: Optional[str] = None,
-        limit: Optional[int] = None,
+        provider: str | None = None,
+        after: str | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> Sequence[Batch]:
         provider_name = self._provider_name(provider)

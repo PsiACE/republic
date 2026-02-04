@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import inspect
 import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, NoReturn, TypeVar, cast
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -23,42 +24,58 @@ def _callable_name(func: Callable[..., Any]) -> str:
     return func.__class__.__name__
 
 
-def _schema_from_annotation(annotation: Any) -> Dict[str, Any]:
+def _schema_from_annotation(annotation: Any) -> dict[str, Any]:
     """Convert Python type annotations to JSON schema via Pydantic."""
     if annotation is inspect._empty:
         annotation = Any
     try:
         return TypeAdapter(annotation).json_schema()
     except Exception as exc:
-        raise ValueError(f"Failed to build JSON schema for type: {annotation!r}") from exc
+        _raise_value_error(f"Failed to build JSON schema for type: {annotation!r}", cause=exc)
 
 
-def _schema_from_signature(signature: inspect.Signature) -> Dict[str, Any]:
-    properties: Dict[str, Any] = {}
-    required: List[str] = []
+def _raise_value_error(message: str, *, cause: Exception | None = None) -> NoReturn:
+    if cause is None:
+        raise ValueError(message)
+    raise ValueError(message) from cause
+
+
+def _raise_type_error(message: str, *, cause: Exception | None = None) -> NoReturn:
+    if cause is None:
+        raise TypeError(message)
+    raise TypeError(message) from cause
+
+
+def _schema_from_signature(signature: inspect.Signature) -> dict[str, Any]:
+    properties: dict[str, Any] = {}
+    required: list[str] = []
     for param in signature.parameters.values():
         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
             continue
         properties[param.name] = _schema_from_annotation(param.annotation)
         if param.default is param.empty:
             required.append(param.name)
-    schema: Dict[str, Any] = {"type": "object", "properties": properties}
+    schema: dict[str, Any] = {"type": "object", "properties": properties}
     if required:
         schema["required"] = required
     return schema
 
 
-def _validate_tool_schema(tool_schema: Dict[str, Any]) -> str:
+def _validate_tool_schema(tool_schema: dict[str, Any]) -> str:
     if tool_schema.get("type") != "function":
-        raise ValueError("Tool schema must have type='function'.")
+        _raise_value_error("Tool schema must have type='function'.")
     function = tool_schema.get("function")
     if not isinstance(function, dict):
-        raise ValueError("Tool schema must include a 'function' object.")
+        _raise_type_error("Tool schema must include a 'function' object.")
+    function = cast(dict[str, Any], function)
     name = function.get("name")
-    if not isinstance(name, str) or not name.strip():
-        raise ValueError("Tool schema must include a non-empty function name.")
+    if not isinstance(name, str):
+        _raise_type_error("Tool schema must include a non-empty function name.")
+    name = cast(str, name)
+    if not name.strip():
+        _raise_value_error("Tool schema must include a non-empty function name.")
     if "parameters" not in function:
-        raise ValueError("Tool schema must include function parameters.")
+        _raise_value_error("Tool schema must include function parameters.")
     return name
 
 
@@ -68,10 +85,10 @@ class Tool:
 
     name: str
     description: str = ""
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    handler: Optional[Callable[..., Any]] = None
+    parameters: dict[str, Any] = field(default_factory=dict)
+    handler: Callable[..., Any] | None = None
 
-    def schema(self) -> Dict[str, Any]:
+    def schema(self) -> dict[str, Any]:
         return {
             "type": "function",
             "function": {
@@ -81,44 +98,47 @@ class Tool:
             },
         }
 
-    def as_tool(self, json_mode: bool = False) -> Union[str, Dict[str, Any]]:
+    def as_tool(self, json_mode: bool = False) -> str | dict[str, Any]:
         schema = self.schema()
         if json_mode:
             return json.dumps(schema, indent=2)
         return schema
 
     def run(self, *args: Any, **kwargs: Any) -> Any:
-        if self.handler is None:
-            raise TypeError(f"Tool '{self.name}' is schema-only and cannot be executed.")
-        return self.handler(*args, **kwargs)
+        handler = self.handler
+        if handler is None:
+            _raise_type_error(f"Tool '{self.name}' is schema-only and cannot be executed.")
+        handler = cast(Callable[..., Any], handler)
+        return handler(*args, **kwargs)
 
     @classmethod
     def from_callable(
         cls,
         func: Callable[..., Any],
         *,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-    ) -> "Tool":
+        name: str | None = None,
+        description: str | None = None,
+    ) -> Tool:
         tool_name = name or _to_snake_case(_callable_name(func))
         tool_description = description if description is not None else (inspect.getdoc(func) or "")
         parameters = _schema_from_signature(inspect.signature(func))
         return cls(name=tool_name, description=tool_description, parameters=parameters, handler=func)
 
     @classmethod
-    def from_model(cls, model: type[ModelT], handler: Optional[Callable[[ModelT], Any]] = None) -> "Tool":
+    def from_model(cls, model: type[ModelT], handler: Callable[[ModelT], Any] | None = None) -> Tool:
         if handler is None:
-            raise TypeError("Tool.from_model requires a handler. Use schema_from_model for schema-only tools.")
+            _raise_type_error("Tool.from_model requires a handler. Use schema_from_model for schema-only tools.")
+        handler = cast(Callable[[ModelT], Any], handler)
         return tool_from_model(model, handler)
 
     @classmethod
-    def convert_tools(cls, tools: ToolInput) -> List["Tool"]:
+    def convert_tools(cls, tools: ToolInput) -> list[Tool]:
         if not tools:
             return []
         if isinstance(tools, ToolSet):
             return tools.runnable
         if any(isinstance(tool_item, dict) for tool_item in tools):
-            raise TypeError("Schema-only tools are not supported in convert_tools.")
+            _raise_type_error("Schema-only tools are not supported in convert_tools.")
         toolset = normalize_tools(tools)
         return toolset.runnable
 
@@ -127,28 +147,28 @@ class Tool:
 class ToolSet:
     """Normalized tools with schema payload and runnable implementations."""
 
-    schemas: List[Dict[str, Any]]
-    runnable: List[Tool]
+    schemas: list[dict[str, Any]]
+    runnable: list[Tool]
 
     @property
-    def payload(self) -> Optional[List[Dict[str, Any]]]:
+    def payload(self) -> list[dict[str, Any]] | None:
         return self.schemas or None
 
     def require_runnable(self) -> None:
         if self.schemas and not self.runnable:
-            raise ValueError("Schema-only tools cannot be executed.")
+            _raise_value_error("Schema-only tools cannot be executed.")
 
     @classmethod
-    def from_tools(cls, tools: ToolInput) -> "ToolSet":
+    def from_tools(cls, tools: ToolInput) -> ToolSet:
         return normalize_tools(tools)
 
 
 def schema_from_model(
     model: type[ModelT],
     *,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-) -> Dict[str, Any]:
+    name: str | None = None,
+    description: str | None = None,
+) -> dict[str, Any]:
     """Create a tool schema from a Pydantic model without making it runnable."""
     model_name = name or _to_snake_case(model.__name__)
     model_description = description if description is not None else (model.__doc__ or "")
@@ -166,8 +186,8 @@ def tool_from_model(
     model: type[ModelT],
     handler: Callable[[ModelT], Any],
     *,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
+    name: str | None = None,
+    description: str | None = None,
 ) -> Tool:
     """Create a runnable Tool that validates inputs via a Pydantic model."""
     tool_name = name or _to_snake_case(model.__name__)
@@ -180,7 +200,41 @@ def tool_from_model(
     return Tool(name=tool_name, description=tool_description, parameters=model.model_json_schema(), handler=_handler)
 
 
-ToolInput = Optional[Union[ToolSet, Sequence[Any]]]
+ToolInput = ToolSet | Sequence[Any] | None
+
+
+@dataclass(frozen=True)
+class _ToolEntry:
+    schema: dict[str, Any]
+    runnable: Tool | None
+
+
+def _ensure_unique(name: str, seen_names: set[str]) -> None:
+    if not name:
+        _raise_value_error("Tool name cannot be empty.")
+    if name in seen_names:
+        _raise_value_error(f"Duplicate tool name: {name}")
+    seen_names.add(name)
+
+
+def _normalize_tool_item(tool_item: Any, seen_names: set[str]) -> _ToolEntry:
+    if isinstance(tool_item, dict):
+        tool_name = _validate_tool_schema(tool_item)
+        _ensure_unique(tool_name, seen_names)
+        return _ToolEntry(schema=tool_item, runnable=None)
+
+    if isinstance(tool_item, Tool):
+        tool_obj = tool_item
+    elif callable(tool_item):
+        tool_obj = Tool.from_callable(tool_item)
+    else:
+        _raise_type_error(f"Unsupported tool type: {type(tool_item)}")
+
+    _ensure_unique(tool_obj.name, seen_names)
+    return _ToolEntry(
+        schema=tool_obj.schema(),
+        runnable=tool_obj if tool_obj.handler is not None else None,
+    )
 
 
 def normalize_tools(tools: ToolInput) -> ToolSet:
@@ -190,48 +244,29 @@ def normalize_tools(tools: ToolInput) -> ToolSet:
     if isinstance(tools, ToolSet):
         return tools
     if isinstance(tools, Sequence) and any(isinstance(tool_item, ToolSet) for tool_item in tools):
-        raise TypeError("ToolSet cannot be mixed with other tool definitions.")
+        _raise_type_error("ToolSet cannot be mixed with other tool definitions.")
     if not tools:
         return ToolSet([], [])
 
-    schemas: List[Dict[str, Any]] = []
-    runnable_tools: List[Tool] = []
+    schemas: list[dict[str, Any]] = []
+    runnable_tools: list[Tool] = []
     seen_names: set[str] = set()
 
     for tool_item in tools:
-        if isinstance(tool_item, dict):
-            tool_name = _validate_tool_schema(tool_item)
-            if tool_name in seen_names:
-                raise ValueError(f"Duplicate tool name: {tool_name}")
-            seen_names.add(tool_name)
-            schemas.append(tool_item)
-            continue
-
-        if isinstance(tool_item, Tool):
-            tool_obj = tool_item
-        elif callable(tool_item):
-            tool_obj = Tool.from_callable(tool_item)
-        else:
-            raise TypeError(f"Unsupported tool type: {type(tool_item)}")
-
-        if not tool_obj.name:
-            raise ValueError("Tool name cannot be empty.")
-        if tool_obj.name in seen_names:
-            raise ValueError(f"Duplicate tool name: {tool_obj.name}")
-        seen_names.add(tool_obj.name)
-        schemas.append(tool_obj.schema())
-        if tool_obj.handler is not None:
-            runnable_tools.append(tool_obj)
+        entry = _normalize_tool_item(tool_item, seen_names)
+        schemas.append(entry.schema)
+        if entry.runnable is not None:
+            runnable_tools.append(entry.runnable)
 
     return ToolSet(schemas, runnable_tools)
 
 
 def tool(
-    func: Optional[Callable[..., Any]] = None,
+    func: Callable[..., Any] | None = None,
     *,
-    name: Optional[str] = None,
-    description: Optional[str] = None,
-) -> Union[Tool, Callable[..., Any]]:
+    name: str | None = None,
+    description: str | None = None,
+) -> Tool | Callable[..., Any]:
     """Decorator to convert a function into a Tool instance."""
 
     def _create_tool(f: Callable[..., Any]) -> Tool:

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import warnings
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from any_llm.types.completion import CreateEmbeddingResponse
 from any_llm.types.model import Model
@@ -25,17 +26,17 @@ class LLM:
 
     def __init__(
         self,
-        model: Optional[str] = None,
+        model: str | None = None,
         *,
-        provider: Optional[str] = None,
-        fallback_models: Optional[List[str]] = None,
+        provider: str | None = None,
+        fallback_models: list[str] | None = None,
         max_retries: int = 3,
-        api_key: Optional[str | Dict[str, str]] = None,
-        api_base: Optional[str | Dict[str, str]] = None,
-        client_args: Optional[Dict[str, Any]] = None,
+        api_key: str | dict[str, str] | None = None,
+        api_base: str | dict[str, str] | None = None,
+        client_args: dict[str, Any] | None = None,
         verbose: int = 0,
-        conversation_store: Optional[ConversationStore] = None,
-        error_classifier: Optional[Callable[[Exception], Optional[ErrorKind]]] = None,
+        conversation_store: ConversationStore | None = None,
+        error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
         if verbose not in (0, 1, 2):
             raise RepublicError(ErrorKind.INVALID_INPUT, "verbose must be 0, 1, or 2")
@@ -95,15 +96,15 @@ class LLM:
         return self._core.provider
 
     @property
-    def fallback_models(self) -> List[str]:
+    def fallback_models(self) -> list[str]:
         return self._core.fallback_models
 
     def embedding(
         self,
-        inputs: str | List[str],
+        inputs: str | list[str],
         *,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
+        model: str | None = None,
+        provider: str | None = None,
         **kwargs: Any,
     ) -> CreateEmbeddingResponse:
         if model is None and provider is None:
@@ -119,10 +120,10 @@ class LLM:
 
     async def aembedding(
         self,
-        inputs: str | List[str],
+        inputs: str | list[str],
         *,
-        model: Optional[str] = None,
-        provider: Optional[str] = None,
+        model: str | None = None,
+        provider: str | None = None,
         **kwargs: Any,
     ) -> CreateEmbeddingResponse:
         if model is None and provider is None:
@@ -136,7 +137,7 @@ class LLM:
             lambda client: client.aembedding(model=model_id, inputs=inputs, **kwargs),
         )
 
-    def list_models(self, *, provider: Optional[str] = None, **kwargs: Any) -> Sequence[Model]:
+    def list_models(self, *, provider: str | None = None, **kwargs: Any) -> Sequence[Model]:
         provider_name = provider or self._core.provider
         return self._call_provider(
             provider_name,
@@ -145,7 +146,7 @@ class LLM:
             lambda client: client.list_models(**kwargs),
         )
 
-    async def alist_models(self, *, provider: Optional[str] = None, **kwargs: Any) -> Sequence[Model]:
+    async def alist_models(self, *, provider: str | None = None, **kwargs: Any) -> Sequence[Model]:
         provider_name = provider or self._core.provider
         return await self._acall_provider(
             provider_name,

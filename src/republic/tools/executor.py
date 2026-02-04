@@ -3,29 +3,30 @@
 from __future__ import annotations
 
 import json
-from contextlib import nullcontext
-from typing import Any, Callable, ContextManager, Dict, List, Optional, Sequence, Union
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
+from typing import Any
 
 from republic.core.errors import ErrorKind, RepublicError
 from republic.tools.schema import ToolInput, normalize_tools
 
-SpanFactory = Callable[..., ContextManager[None]]
+SpanFactory = Callable[..., AbstractContextManager[None]]
 
 
 class ToolExecutor:
     """Execute tool calls with predictable validation and serialization."""
 
-    def __init__(self, span: Optional[SpanFactory] = None) -> None:
+    def __init__(self, span: SpanFactory | None = None) -> None:
         self._span = span or (lambda *args, **kwargs: nullcontext())
 
-    def execute(self, response: Union[List[dict], dict, str], tools: ToolInput = None) -> Optional[str]:
+    def execute(self, response: list[dict] | dict | str, tools: ToolInput = None) -> str | None:
         if tools is None:
             raise RepublicError(ErrorKind.INVALID_INPUT, "No tools provided.")
 
         tool_calls = self._normalize_response(response)
         tool_map = self._build_tool_map(tools)
 
-        results: List[Any] = []
+        results: list[Any] = []
         for tool_response in tool_calls:
             if not isinstance(tool_response, dict):
                 raise RepublicError(ErrorKind.INVALID_INPUT, "Tool response must be an object.")
@@ -50,7 +51,7 @@ class ToolExecutor:
             return self._serialize_tool_result(results)
         return self._serialize_tool_result(results[0])
 
-    def _normalize_response(self, response: Union[List[dict], dict, str]) -> List[dict]:
+    def _normalize_response(self, response: list[dict] | dict | str) -> list[dict]:
         if isinstance(response, str):
             try:
                 response = json.loads(response)
@@ -64,7 +65,7 @@ class ToolExecutor:
             raise RepublicError(ErrorKind.INVALID_INPUT, "Tool response must be a list of objects.")
         return response
 
-    def _build_tool_map(self, tools: ToolInput) -> Dict[str, Callable[..., Any]]:
+    def _build_tool_map(self, tools: ToolInput) -> dict[str, Callable[..., Any]]:
         try:
             toolset = normalize_tools(tools)
         except (ValueError, TypeError) as exc:
@@ -75,15 +76,15 @@ class ToolExecutor:
             raise RepublicError(ErrorKind.INVALID_INPUT, "No callable tools available for execution.")
         return tool_map
 
-    def _normalize_tool_args(self, tool_name: str, tool_args: Any) -> Dict[str, Any]:
+    def _normalize_tool_args(self, tool_name: str, tool_args: Any) -> dict[str, Any]:
         if isinstance(tool_args, str):
             try:
                 tool_args = json.loads(tool_args)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
                 raise RepublicError(
                     ErrorKind.INVALID_INPUT,
                     f"Tool arguments for '{tool_name}' are not valid JSON.",
-                )
+                ).with_cause(exc) from exc
         if isinstance(tool_args, dict):
             return {k: v for k, v in tool_args.items() if v is not None}
         raise RepublicError(ErrorKind.INVALID_INPUT, f"Tool arguments for '{tool_name}' must be an object.")
