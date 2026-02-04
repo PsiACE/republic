@@ -1,5 +1,5 @@
 repository:
-  description: "Tape-first, explicit LLM client and router built on any-llm."
+  description: "An explicit LLM client and router with append-only history and controllable context."
   homepage: "https://getrepublic.org"
   topics:
     - ai
