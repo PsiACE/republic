@@ -1,10 +1,22 @@
 [project]
 name = "republic"
 version = "0.2.0"
-description = "The minimalistic AI stack for developers who value freedom and efficiency."
+description = "Tape-first, explicit LLM client and router built on any-llm."
 authors = [{ name = "Chojan Shang", email = "psiace@apache.org" }]
 readme = "README.md"
-keywords = ["python"]
+keywords = [
+    "ai",
+    "agents",
+    "any-llm",
+    "context",
+    "llm",
+    "openai",
+    "openrouter",
+    "python",
+    "routing",
+    "tape",
+    "tools",
+]
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "any-llm-sdk>=1.7.0",

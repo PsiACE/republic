@@ -1,0 +1,15 @@
+repository:
+  description: "Tape-first, explicit LLM client and router built on any-llm."
+  homepage: "https://getrepublic.org"
+  topics:
+    - ai
+    - agents
+    - any-llm
+    - context
+    - llm
+    - openai
+    - openrouter
+    - python
+    - routing
+    - tape
+    - tools
