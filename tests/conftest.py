@@ -1,105 +1,59 @@
 from __future__ import annotations
 
-import builtins
+import os
+from pathlib import Path
 
 import pytest
 
-from republic import TapeEntry
+
+def _load_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    env: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        key, _, value = line.partition("=")
+        if key:
+            env[key] = value
+    return env
 
 
-class StubCallable:
-    def __init__(self) -> None:
-        self.return_value = None
-        self.side_effect = None
-        self.calls = []
-
-    def _next_effect(self):
-        if isinstance(self.side_effect, list):
-            if not self.side_effect:
-                return None
-            return self.side_effect.pop(0)
-        return self.side_effect
-
-    def __call__(self, *args, **kwargs):
-        self.calls.append((args, kwargs))
-        if self.side_effect is not None:
-            effect = self._next_effect()
-            if isinstance(effect, Exception):
-                raise effect
-            if callable(effect):
-                return effect(*args, **kwargs)
-            return effect
-        return self.return_value
+def _apply_env(env: dict[str, str]) -> None:
+    for key, value in env.items():
+        os.environ.setdefault(key, value)
+    if "OPENROUTER_API_KEY" not in os.environ and "LLM_API_KEY" in os.environ:
+        os.environ["OPENROUTER_API_KEY"] = os.environ["LLM_API_KEY"]
 
 
-class AsyncStubCallable(StubCallable):
-    async def __call__(self, *args, **kwargs):
-        self.calls.append((args, kwargs))
-        if self.side_effect is not None:
-            effect = self._next_effect()
-            if isinstance(effect, Exception):
-                raise effect
-            if callable(effect):
-                result = effect(*args, **kwargs)
-                return result
-            return effect
-        return self.return_value
+_apply_env(_load_env_file(Path(".env")))
 
 
-class StubClient:
-    def __init__(self) -> None:
-        self.completion = StubCallable()
-        self.acompletion = AsyncStubCallable()
-        self.responses = StubCallable()
-        self.aresponses = AsyncStubCallable()
-        self._embedding = StubCallable()
-        self.aembedding = AsyncStubCallable()
-        self.list_models = StubCallable()
-        self.alist_models = AsyncStubCallable()
-        self.create_batch = StubCallable()
-        self.acreate_batch = AsyncStubCallable()
-        self.retrieve_batch = StubCallable()
-        self.aretrieve_batch = AsyncStubCallable()
-        self.cancel_batch = StubCallable()
-        self.acancel_batch = AsyncStubCallable()
-        self.list_batches = StubCallable()
-        self.alist_batches = AsyncStubCallable()
+@pytest.fixture(scope="session")
+def openrouter_api_key() -> str:
+    key = os.getenv("LLM_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+    if not key:
+        pytest.skip("LLM_API_KEY is not set.")
+    assert key is not None
+    return key
 
 
-@pytest.fixture
-def stub_client(monkeypatch):
-    client = StubClient()
-    monkeypatch.setattr("republic.core.execution.AnyLLM.create", lambda *args, **kwargs: client)
-    return client
+@pytest.fixture(scope="session")
+def openrouter_chat_model() -> str:
+    return os.getenv("REPUBLIC_CHAT_MODEL", "openrouter:openrouter/free")
 
 
-class RecordingTapeStore:
-    def __init__(self, initial_tapes: dict[str, builtins.list[TapeEntry]] | None = None) -> None:
-        self.appended: list[tuple[str, TapeEntry]] = []
-        self._tapes: dict[str, list[TapeEntry]] = {
-            name: [entry.copy() for entry in entries] for name, entries in (initial_tapes or {}).items()
-        }
-
-    def seed(self, name: str, entries: builtins.list[TapeEntry]) -> None:
-        self._tapes[name] = [entry.copy() for entry in entries]
-
-    def list_tapes(self) -> builtins.list[str]:
-        return sorted(self._tapes.keys())
-
-    def reset(self, name: str) -> None:
-        self._tapes.pop(name, None)
-
-    def read(self, name: str):
-        entries = self._tapes.get(name)
-        if entries is None:
-            return None
-        return [entry.copy() for entry in entries]
-
-    def append(self, name: str, entry: TapeEntry) -> None:
-        self.appended.append((name, entry.copy()))
-        self._tapes.setdefault(name, []).append(entry.copy())
+@pytest.fixture(scope="session")
+def openrouter_stream_model() -> str:
+    return os.getenv("REPUBLIC_STREAM_MODEL", "openrouter:openai/gpt-4o-mini")
 
 
-@pytest.fixture
-def recording_tape_store() -> RecordingTapeStore:
-    return RecordingTapeStore()
+@pytest.fixture(scope="session")
+def openrouter_embedding_model() -> str:
+    return os.getenv("REPUBLIC_EMBEDDING_MODEL", "openrouter:openai/text-embedding-3-small")
+
+
+@pytest.fixture(scope="session")
+def openrouter_tool_model() -> str:
+    return os.getenv("REPUBLIC_TOOL_MODEL", "openrouter:openai/gpt-4o-mini")
