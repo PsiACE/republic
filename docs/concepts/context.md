@@ -8,7 +8,7 @@ The flow is always: anchor slicing → selection.
 
 ## Default Context
 
-The default context includes `message` entries after the last anchor.
+The default context includes `message` entries after the most recent anchor.
 
 ```python
 from republic import LLM
@@ -21,7 +21,9 @@ tape = llm.tape("notes")
 
 ## Anchor Control
 
-Use `TapeContext.anchor` to control where context starts.
+Use `TapeContext.anchor` to control where context starts. The anchor name must be explicit.
+Context starts after the most recent matching anchor name.
+`TapeContext()` defaults to the most recent anchor; use `anchor=None` for full context.
 
 ```python
 from republic import LLM, TapeContext
@@ -31,6 +33,10 @@ tape = llm.tape("notes", context=TapeContext(anchor="handoff:v1"))
 ```
 
 Set `anchor=None` to include the full tape.
+
+## Missing Anchors
+
+If an anchor is missing, Republic leaves the context unchanged. Anchors are best-effort hints, not hard requirements.
 
 ## Selection
 
@@ -52,7 +58,7 @@ def keyword_select(entries: list[TapeEntry], context: TapeContext) -> list[dict[
             results.append(entry)
     return [entry.payload for entry in results[-5:]]
 
-context = TapeContext(anchor="last", select=keyword_select)
+context = TapeContext(anchor=None, select=keyword_select)
 llm = LLM(model="openai:gpt-4o-mini")
 tape = llm.tape("notes", context=context)
 ```

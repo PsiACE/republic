@@ -70,12 +70,12 @@ class TestToolModels:
         assert schema["function"]["name"] == "weather"
         assert "location" in schema["function"]["parameters"]["properties"]
 
-    def test_tool_from_model_requires_handler(self):
+    def test_tool_from_model_defaults_to_model_dump(self):
         class Weather(BaseModel):
             location: str
 
-        with pytest.raises(TypeError):
-            Tool.from_model(Weather)
+        weather_tool = Tool.from_model(Weather)
+        assert weather_tool.run(location="Tokyo") == {"location": "Tokyo"}
 
 
 class TestToolSets:
@@ -149,4 +149,13 @@ class TestToolExecution:
         toolset = ToolSet.from_tools([add])
         executor = ToolExecutor()
         response = {"function": {"name": "add", "arguments": '{"a": 1, "b": 2}'}}
-        assert executor.execute(response, tools=toolset) == "3"
+        assert executor.execute(response, tools=toolset) == 3
+
+    def test_tool_executor_drops_none(self):
+        @tool
+        def set_owner(owner_id: str | None = "missing") -> str:
+            return owner_id or "missing"
+
+        executor = ToolExecutor()
+        response = {"function": {"name": "set_owner", "arguments": {"owner_id": None}}}
+        assert executor.execute(response, tools=[set_owner]) == "missing"

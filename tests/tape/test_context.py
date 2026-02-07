@@ -5,7 +5,7 @@ from republic.tape import InMemoryTapeStore
 
 
 class TestTapeContext:
-    def test_context_uses_last_anchor(self, stub_client):
+    def test_context_defaults_to_last_anchor(self, stub_client):
         stub_client.completion.return_value = "Hello"
         store = InMemoryTapeStore()
         store.append("conv", TapeEntry.message({"role": "user", "content": "old"}))
@@ -13,7 +13,23 @@ class TestTapeContext:
         llm = LLM(
             model="openai:gpt-4o-mini",
             tape_store=store,
-            context=TapeContext(anchor="last"),
+        )
+        tape = llm.tape("conv")
+
+        tape.create("Hi")
+        messages = stub_client.completion.calls[0][1]["messages"]
+        assert {"role": "user", "content": "old"} not in messages
+        assert messages[-1]["content"] == "Hi"
+
+    def test_context_uses_named_anchor(self, stub_client):
+        stub_client.completion.return_value = "Hello"
+        store = InMemoryTapeStore()
+        store.append("conv", TapeEntry.message({"role": "user", "content": "old"}))
+        store.append("conv", TapeEntry.anchor("handoff"))
+        llm = LLM(
+            model="openai:gpt-4o-mini",
+            tape_store=store,
+            context=TapeContext(anchor="handoff"),
         )
         tape = llm.tape("conv")
 
@@ -86,4 +102,20 @@ class TestTapeContext:
         assert {"role": "user", "content": "ignored"} not in messages
         assert {"role": "system", "content": "Summary block"} in messages
         assert {"role": "user", "content": "run"} in messages
+        assert messages[-1]["content"] == "Hi"
+
+    def test_missing_anchor_is_noop(self, stub_client):
+        stub_client.completion.return_value = "Hello"
+        store = InMemoryTapeStore()
+        store.append("conv", TapeEntry.message({"role": "user", "content": "old"}))
+        llm = LLM(
+            model="openai:gpt-4o-mini",
+            tape_store=store,
+            context=TapeContext(anchor="missing"),
+        )
+        tape = llm.tape("conv")
+
+        tape.create("Hi")
+        messages = stub_client.completion.calls[0][1]["messages"]
+        assert {"role": "user", "content": "old"} in messages
         assert messages[-1]["content"] == "Hi"

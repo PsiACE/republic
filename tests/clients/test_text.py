@@ -25,6 +25,12 @@ class TestTextHelpers:
 
         assert llm.text.classify("message", ["alpha", "beta"]) == "alpha"
 
+    def test_classify_returns_normalized_label(self, stub_client):
+        stub_client.completion.return_value = "feature"
+        llm = LLM(model="openai:gpt-4o-mini")
+
+        assert llm.text.classify("message", ["Bug", "Feature", "Doc"]) == "feature"
+
     def test_classify_rejects_empty_choices(self):
         llm = LLM(model="openai:gpt-4o-mini")
 

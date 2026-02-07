@@ -127,9 +127,14 @@ class Tool:
     @classmethod
     def from_model(cls, model: type[ModelT], handler: Callable[[ModelT], Any] | None = None) -> Tool:
         if handler is None:
-            _raise_type_error("Tool.from_model requires a handler. Use schema_from_model for schema-only tools.")
-        handler = cast(Callable[[ModelT], Any], handler)
-        return tool_from_model(model, handler)
+
+            def _default_handler(payload: ModelT) -> Any:
+                return payload.model_dump()
+
+            handler_fn = _default_handler
+        else:
+            handler_fn = handler
+        return tool_from_model(model, handler_fn)
 
     @classmethod
     def convert_tools(cls, tools: ToolInput) -> list[Tool]:

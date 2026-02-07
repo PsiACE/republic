@@ -214,7 +214,7 @@ class Tape:
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Any:
         context = self._context_override
         return self._chat._tools_auto(
             prompt=prompt,
@@ -350,7 +350,7 @@ class Tape:
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Any:
         context = self._context_override
         return await self._chat._atools_auto(
             prompt=prompt,

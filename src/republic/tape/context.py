@@ -4,20 +4,29 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 from .entries import TapeEntry
+
+
+class _LastAnchor:
+    def __repr__(self) -> str:
+        return "LAST_ANCHOR"
+
+
+LAST_ANCHOR = _LastAnchor()
+AnchorSelector: TypeAlias = str | None | _LastAnchor
 
 
 @dataclass(frozen=True)
 class TapeContext:
     """Rules for selecting tape entries into a prompt context.
 
-    anchor: None for the full tape, "last" for the most recent anchor, or an anchor name.
+    anchor: LAST_ANCHOR for the most recent anchor, None for the full tape, or an anchor name.
     select: Optional selector called after anchor slicing that returns messages.
     """
 
-    anchor: str | None = "last"
+    anchor: AnchorSelector = LAST_ANCHOR
     select: Callable[[Sequence[TapeEntry], TapeContext], list[dict[str, Any]]] | None = None
 
 
@@ -40,18 +49,21 @@ def _default_messages(entries: Sequence[TapeEntry]) -> list[dict[str, Any]]:
     return messages
 
 
-def _slice_after_anchor(entries: Sequence[TapeEntry], anchor: str | None) -> Sequence[TapeEntry]:
+def _slice_after_anchor(entries: Sequence[TapeEntry], anchor: AnchorSelector) -> Sequence[TapeEntry]:
     if anchor is None:
         return entries
 
-    anchor_name = None if anchor == "last" else anchor
+    anchor_name = None if anchor is LAST_ANCHOR else anchor
     start_index = 0
     for idx in range(len(entries) - 1, -1, -1):
         entry = entries[idx]
         if entry.kind != "anchor":
             continue
-        if anchor_name and entry.payload.get("name") != anchor_name:
+        if anchor_name is not None and entry.payload.get("name") != anchor_name:
             continue
         start_index = idx + 1
         break
+    else:
+        return entries
+
     return entries[start_index:]

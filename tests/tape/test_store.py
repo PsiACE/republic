@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from republic import LLM, TapeEntry
+from republic import LLM
 
 
 class TestTapeStore:
@@ -19,13 +19,11 @@ class TestTapeStore:
 
         tape.create("Hi", system_prompt="sys")
         assert [entry.payload["role"] for _, entry in recording_tape_store.appended] == [
-            "system",
             "user",
             "assistant",
         ]
 
-    def test_system_prompt_not_duplicated(self, stub_client, recording_tape_store):
-        recording_tape_store.seed("conv", [TapeEntry.message({"role": "system", "content": "sys"})])
+    def test_system_prompt_not_appended(self, stub_client, recording_tape_store):
         stub_client.completion.return_value = "Hello"
         llm = LLM(model="openai:gpt-4o-mini", tape_store=recording_tape_store)
         tape = llm.tape("conv")

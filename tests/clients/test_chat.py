@@ -5,8 +5,9 @@ from typing import Any
 import pytest
 from any_llm.types.completion import ChatCompletion, ChatCompletionChunk
 
-from republic import LLM, ToolSet, tool
+from republic import LLM, TapeEntry, ToolSet, tool
 from republic.core import ErrorKind, RepublicError
+from republic.tape import InMemoryTapeStore
 
 
 def _make_tool_call_response() -> ChatCompletion:
@@ -14,6 +15,29 @@ def _make_tool_call_response() -> ChatCompletion:
         "id": "call_1",
         "type": "function",
         "function": {"name": "get_weather", "arguments": '{"location": "Tokyo"}'},
+    }
+    payload = {
+        "id": "chatcmpl_1",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "gpt-4o-mini",
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "tool_calls",
+                "message": {"role": "assistant", "content": None, "tool_calls": [tool_call]},
+            }
+        ],
+        "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+    }
+    return ChatCompletion.model_validate(payload)
+
+
+def _make_invalid_tool_call_response() -> ChatCompletion:
+    tool_call = {
+        "id": "call_1",
+        "type": "function",
+        "function": {"name": "get_weather", "arguments": "{bad json"},
     }
     payload = {
         "id": "chatcmpl_1",
@@ -107,6 +131,18 @@ class TestChatBasics:
 
         assert list(llm.chat.stream("Hi")) == ["Hel", "lo"]
 
+    def test_system_prompt_is_prepended_for_tape(self, stub_client):
+        stub_client.completion.return_value = "Hello"
+        store = InMemoryTapeStore()
+        store.append("conv", TapeEntry.message({"role": "user", "content": "old"}))
+        llm = LLM(model="openai:gpt-4o-mini", tape_store=store)
+        tape = llm.tape("conv")
+
+        tape.create("Hi", system_prompt="sys")
+        messages = stub_client.completion.calls[0][1]["messages"]
+        assert messages[0] == {"role": "system", "content": "sys"}
+        assert {"role": "user", "content": "old"} in messages
+
 
 class TestChatTools:
     def test_tool_calls_manual(self, stub_client):
@@ -156,6 +192,17 @@ class TestChatTools:
 
         llm = LLM(model="openai:gpt-4o-mini")
         assert list(llm.chat.tools_auto_stream("Weather?", tools=[get_weather])) == ["Weather in Tokyo is sunny"]
+
+    def test_tools_auto_returns_empty_string_on_invalid_tool_args(self, stub_client):
+        stub_client.completion.return_value = _make_invalid_tool_call_response()
+
+        @tool
+        def get_weather(location: str) -> str:
+            """Get the weather for a location."""
+            return f"Weather in {location} is sunny"
+
+        llm = LLM(model="openai:gpt-4o-mini")
+        assert llm.chat.tools_auto("Weather?", tools=[get_weather]) == ""
 
 
 class TestChatValidation:

@@ -92,3 +92,17 @@ class TestTapeHandles:
         tape.create("Hi")
         messages = stub_client.completion.calls[0][1]["messages"]
         assert {"role": "user", "content": "old"} in messages
+
+
+class TestLLMTextHelpers:
+    def test_llm_if_delegates(self, stub_client):
+        stub_client.completion.return_value = "Yes"
+        llm = LLM(model="openai:gpt-4o-mini")
+
+        assert llm.if_("Hello", "Is this a greeting?") is True
+
+    def test_llm_classify_delegates(self, stub_client):
+        stub_client.completion.return_value = "feature"
+        llm = LLM(model="openai:gpt-4o-mini")
+
+        assert llm.classify("message", ["Bug", "Feature", "Doc"]) == "feature"

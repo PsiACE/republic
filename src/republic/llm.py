@@ -166,6 +166,12 @@ class LLM:
             lambda client: client.aembedding(model=model_id, inputs=inputs, **kwargs),
         )
 
+    def if_(self, input_text: str, question: str) -> bool:
+        return self.text.if_(input_text, question)
+
+    def classify(self, input_text: str, choices: list[str]) -> str:
+        return self.text.classify(input_text, choices)
+
     def list_models(self, *, provider: str | None = None, **kwargs: Any) -> Sequence[Model]:
         provider_name = provider or self._core.provider
         return self._call_provider(

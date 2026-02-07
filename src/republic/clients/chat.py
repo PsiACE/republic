@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -153,11 +154,13 @@ class ChatClient:
             return [user_message], []
 
         history = self._read_messages(tape, context=context)
-        new_messages: list[dict[str, Any]] = []
-        if system_prompt and not any(msg.get("role") == "system" for msg in history):
-            new_messages.append({"role": "system", "content": system_prompt})
-        new_messages.append(user_message)
-        return [*history, *new_messages], new_messages
+        new_messages = [user_message]
+        payload: list[dict[str, Any]] = []
+        if system_prompt:
+            payload.append({"role": "system", "content": system_prompt})
+        payload.extend(history)
+        payload.extend(new_messages)
+        return payload, new_messages
 
     def _prepare_request(
         self,
@@ -254,6 +257,15 @@ class ChatClient:
             message = response.choices[0].message
             return message.content or ""
         return ""
+
+    @staticmethod
+    def _stringify_tool_result(result: Any) -> str:
+        if isinstance(result, str):
+            return result
+        try:
+            return json.dumps(result)
+        except TypeError:
+            return str(result)
 
     def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
         if not isinstance(response, ChatCompletion):
@@ -451,8 +463,8 @@ class ChatClient:
             tool_calls = self._finalize_tool_calls(state.tool_state)
             result = self._tool_executor.execute(tool_calls, tools=tools)
             if result is not None:
-                tool_result = result
-                yield result
+                tool_result = self._stringify_tool_result(result)
+                yield tool_result
 
         if prepared.should_update and prepared.tape:
             if state.collected:
@@ -493,8 +505,8 @@ class ChatClient:
             tool_calls = self._finalize_tool_calls(state.tool_state)
             result = self._tool_executor.execute(tool_calls, tools=tools)
             if result is not None:
-                tool_result = result
-                yield result
+                tool_result = self._stringify_tool_result(result)
+                yield tool_result
 
         if prepared.should_update and prepared.tape:
             if state.collected:
@@ -876,7 +888,7 @@ class ChatClient:
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Any:
         self._reject_tape_kwarg(kwargs)
         return self._tools_auto(
             prompt=prompt,
@@ -906,7 +918,7 @@ class ChatClient:
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Any:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
         prepared = self._prepare_request(
             prompt=prompt,
@@ -925,13 +937,14 @@ class ChatClient:
             if tool_calls:
                 result = self._tool_executor.execute(tool_calls, tools=prepared.toolset.runnable)
                 if result is not None and prepared.should_update:
+                    result_text = self._stringify_tool_result(result)
                     self._update_tape(
                         prepared,
-                        result,
+                        result_text,
                         tool_calls=tool_calls,
-                        tool_result=result,
+                        tool_result=result_text,
                     )
-                return result
+                return result if result is not None else ""
             return self._text_or_retry(
                 response,
                 provider_name=provider_name,
@@ -1332,7 +1345,7 @@ class ChatClient:
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Any:
         self._reject_tape_kwarg(kwargs)
         return await self._atools_auto(
             prompt=prompt,
@@ -1362,7 +1375,7 @@ class ChatClient:
         tools: ToolInput = None,
         reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> Any:
         self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
         prepared = self._prepare_request(
             prompt=prompt,
@@ -1381,13 +1394,14 @@ class ChatClient:
             if tool_calls:
                 result = self._tool_executor.execute(tool_calls, tools=prepared.toolset.runnable)
                 if result is not None and prepared.should_update:
+                    result_text = self._stringify_tool_result(result)
                     self._update_tape(
                         prepared,
-                        result,
+                        result_text,
                         tool_calls=tool_calls,
-                        tool_result=result,
+                        tool_result=result_text,
                     )
-                return result
+                return result if result is not None else ""
             return self._text_or_retry(
                 response,
                 provider_name=provider_name,

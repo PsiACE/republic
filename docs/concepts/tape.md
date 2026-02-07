@@ -79,6 +79,9 @@ store.append("notes", TapeEntry.anchor("end"))
 entries = TapeQuery("notes", store).between_anchors("start", "end").kinds("message").all()
 ```
 
+Between-anchors selection excludes the anchor entries themselves.
+After-anchor selection starts after the most recent matching anchor name.
+
 With a tape handle:
 
 ```python
@@ -86,7 +89,8 @@ from republic import LLM
 
 llm = LLM(model="openai:gpt-4o-mini")
 tape = llm.tape("notes")
-entries = tape.query().after_anchor().kinds("message").all()
+entries = tape.query().after_anchor("handoff:v1").kinds("message").all()
+entries = tape.query().last_anchor().kinds("message").all()
 ```
 
 For context assembly, see [Context](context.md).

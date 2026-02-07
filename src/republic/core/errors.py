@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from enum import Enum
+from enum import StrEnum
 
 
-class ErrorKind(str, Enum):
+class ErrorKind(StrEnum):
     """Stable error kinds for caller decisions."""
 
     INVALID_INPUT = "invalid_input"

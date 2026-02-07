@@ -26,6 +26,8 @@ result = llm.tools.execute(tool_calls, tools=[get_weather])
 print(result)
 ```
 
+Single tool results return the raw value; multiple results return a JSON string list.
+
 ## Automatic Tool Execution
 
 Automatic tool execution requires a tool-capable model. The `openrouter/free` router may return models that do not
@@ -66,4 +68,13 @@ typed_tool = tool_from_model(WeatherSchema, handle_weather, name="weather_tool")
 
 toolset = ToolSet.from_tools([tool_schema, typed_tool])
 print(toolset.payload)
+```
+
+`Tool.from_model` provides a default runnable tool that validates and returns `model_dump()`.
+
+```python
+from republic import Tool
+
+tool = Tool.from_model(WeatherSchema)
+print(tool.run(location="Tokyo"))
 ```

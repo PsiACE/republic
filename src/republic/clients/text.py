@@ -36,6 +36,8 @@ class TextClient:
         ).strip()
 
         response = self._chat.create(prompt)
+        if not isinstance(response, str):
+            return False
         return "yes" in response.strip().lower()
 
     def classify(self, input_text: str, choices: list[str]) -> str:
@@ -60,7 +62,10 @@ class TextClient:
             """
         ).strip()
 
-        response = self._chat.create(prompt).strip().lower()
+        response = self._chat.create(prompt)
+        if not isinstance(response, str):
+            return normalized_choices[0]
+        response = response.strip().lower()
         if response in normalized_choices:
             return response
         return normalized_choices[0]

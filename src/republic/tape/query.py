@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+from republic.core.errors import ErrorKind, RepublicError
+
 from .entries import TapeEntry
 from .store import TapeStore
 
@@ -14,16 +16,30 @@ class TapeQuery:
     tape: str
     store: TapeStore
     _after_anchor: str | None = None
+    _after_last: bool = False
     _between: tuple[str, str] | None = None
     _kinds: tuple[str, ...] = field(default_factory=tuple)
     _limit: int | None = None
 
-    def after_anchor(self, name: str | None = None) -> TapeQuery:
-        anchor = name or "__last__"
+    def after_anchor(self, name: str) -> TapeQuery:
+        if not name:
+            raise RepublicError(ErrorKind.INVALID_INPUT, "anchor name is required.")
         return TapeQuery(
             tape=self.tape,
             store=self.store,
-            _after_anchor=anchor,
+            _after_anchor=name,
+            _after_last=False,
+            _between=self._between,
+            _kinds=self._kinds,
+            _limit=self._limit,
+        )
+
+    def last_anchor(self) -> TapeQuery:
+        return TapeQuery(
+            tape=self.tape,
+            store=self.store,
+            _after_anchor=None,
+            _after_last=True,
             _between=self._between,
             _kinds=self._kinds,
             _limit=self._limit,
@@ -34,6 +50,7 @@ class TapeQuery:
             tape=self.tape,
             store=self.store,
             _after_anchor=self._after_anchor,
+            _after_last=self._after_last,
             _between=(start, end),
             _kinds=self._kinds,
             _limit=self._limit,
@@ -44,6 +61,7 @@ class TapeQuery:
             tape=self.tape,
             store=self.store,
             _after_anchor=self._after_anchor,
+            _after_last=self._after_last,
             _between=self._between,
             _kinds=tuple(kinds),
             _limit=self._limit,
@@ -54,6 +72,7 @@ class TapeQuery:
             tape=self.tape,
             store=self.store,
             _after_anchor=self._after_anchor,
+            _after_last=self._after_last,
             _between=self._between,
             _kinds=self._kinds,
             _limit=value,
@@ -72,15 +91,17 @@ class TapeQuery:
 
         if self._between is not None:
             start_name, end_name = self._between
-            start_index = _anchor_index(entries, start_name, default=0, forward=True)
-            end_index = _anchor_index(entries, end_name, default=len(entries), forward=False)
-            start_index = min(start_index + 1, len(entries))
-            end_index = max(start_index, end_index)
+            start_idx = _anchor_index(entries, start_name, default=-1, forward=False)
+            if start_idx >= 0:
+                end_idx = _anchor_index(entries, end_name, default=-1, forward=True, start=start_idx + 1)
+                if end_idx >= 0:
+                    start_index = min(start_idx + 1, len(entries))
+                    end_index = min(max(start_index, end_idx), len(entries))
+        elif self._after_last:
+            anchor_index = _anchor_index(entries, None, default=-1, forward=False)
+            start_index = min(anchor_index + 1, len(entries))
         elif self._after_anchor is not None:
-            anchor_name = self._after_anchor
-            if anchor_name == "__last__":
-                anchor_name = None
-            anchor_index = _anchor_index(entries, anchor_name, default=-1, forward=False)
+            anchor_index = _anchor_index(entries, self._after_anchor, default=-1, forward=False)
             start_index = min(anchor_index + 1, len(entries))
 
         sliced = entries[start_index:end_index]
@@ -89,13 +110,20 @@ class TapeQuery:
         return sliced
 
 
-def _anchor_index(entries: Sequence[TapeEntry], name: str | None, *, default: int, forward: bool) -> int:
-    rng = range(len(entries)) if forward else range(len(entries) - 1, -1, -1)
+def _anchor_index(
+    entries: Sequence[TapeEntry],
+    name: str | None,
+    *,
+    default: int,
+    forward: bool,
+    start: int = 0,
+) -> int:
+    rng = range(start, len(entries)) if forward else range(len(entries) - 1, start - 1, -1)
     for idx in rng:
         entry = entries[idx]
         if entry.kind != "anchor":
             continue
-        if name and entry.payload.get("name") != name:
+        if name is not None and entry.payload.get("name") != name:
             continue
         return idx
     return default
