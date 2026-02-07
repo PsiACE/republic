@@ -1,7 +1,7 @@
 [project]
 name = "republic"
-version = "0.2.0"
-description = "Explicit LLM client and router with append-only history and controllable context."
+version = "0.3.0"
+description = "Minimal, tape-first LLM client with structured outputs."
 authors = [{ name = "Chojan Shang", email = "psiace@apache.org" }]
 readme = "README.md"
 keywords = [
@@ -20,7 +20,7 @@ keywords = [
 requires-python = ">=3.11,<4.0"
 dependencies = [
     "any-llm-sdk>=1.7.0",
-    "openresponses-types>=2.3.0.post1",
+    "pydantic>=2.7.0",
 ]
 classifiers = [
     "Intended Audience :: Developers",
@@ -37,11 +37,6 @@ classifiers = [
 Homepage = "https://psiace.github.io/republic/"
 Repository = "https://github.com/psiace/republic"
 Documentation = "https://psiace.github.io/republic/"
-
-[project.optional-dependencies]
-observability = [
-    "logfire[httpx]>=4.21.0",
-]
 
 [dependency-groups]
 dev = [
@@ -67,6 +62,10 @@ packages = ["src/republic"]
 [tool.ty.environment]
 python = "./.venv"
 python-version = "3.11"
+
+[tool.ty.src]
+include = ["src", "tests"]
+exclude = ["refer", "site", ".venv"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
