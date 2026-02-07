@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from collections.abc import Callable
@@ -42,7 +43,6 @@ class LLMCore:
         api_base: str | dict[str, str] | None,
         client_args: dict[str, Any],
         verbose: int,
-        span: Callable[..., Any],
         error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
         self._provider = provider
@@ -53,7 +53,6 @@ class LLMCore:
         self._api_base = api_base
         self._client_args = client_args
         self._verbose = verbose
-        self._span = span
         self._error_classifier = error_classifier
         self._client_cache: dict[str, AnyLLM] = {}
 
@@ -75,9 +74,6 @@ class LLMCore:
 
     def max_attempts(self) -> int:
         return max(1, self._max_retries)
-
-    def span(self, name: str, **attributes: Any):
-        return self._span(name, **attributes)
 
     @staticmethod
     def resolve_model_provider(model: str, provider: str | None) -> tuple[str, str]:
@@ -200,23 +196,18 @@ class LLMCore:
                 (UnsupportedProviderError, InvalidRequestError, ModelNotFoundError, ContextLengthExceededError),
                 ErrorKind.INVALID_INPUT,
             ),
-            ((ContentFilterError,), ErrorKind.INVALID_INPUT),
-            ((RateLimitError, ProviderError), ErrorKind.TEMPORARY),
-            ((AnyLLMError,), ErrorKind.PROVIDER),
+            ((RateLimitError, ContentFilterError), ErrorKind.TEMPORARY),
+            ((ProviderError, AnyLLMError), ErrorKind.PROVIDER),
         ]
-        for error_types, kind in error_map:
-            if isinstance(exc, error_types):
+        for types, kind in error_map:
+            if isinstance(exc, types):
                 return kind
         return ErrorKind.UNKNOWN
 
-    @staticmethod
-    def should_retry(kind: ErrorKind) -> bool:
-        return kind is ErrorKind.TEMPORARY
+    def should_retry(self, kind: ErrorKind) -> bool:
+        return kind in {ErrorKind.TEMPORARY, ErrorKind.PROVIDER}
 
-    @staticmethod
-    def wrap_error(exc: Exception, kind: ErrorKind, provider: str, model: str) -> RepublicError:
-        if isinstance(exc, RepublicError):
-            return exc
+    def wrap_error(self, exc: Exception, kind: ErrorKind, provider: str, model: str) -> RepublicError:
         message = f"{provider}:{model}: {exc}"
         return RepublicError(kind, message, cause=exc)
 
@@ -251,23 +242,15 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    with self._span(
-                        "republic.llm.chat",
-                        provider=provider_name,
+                    response = client.completion(
                         model=model_id,
+                        messages=messages_payload,
+                        tools=tools_payload,
+                        max_tokens=max_tokens,
                         stream=stream,
-                        attempt=attempt + 1,
-                        tool_count=tool_count,
-                    ):
-                        response = client.completion(
-                            model=model_id,
-                            messages=messages_payload,
-                            tools=tools_payload,
-                            max_tokens=max_tokens,
-                            stream=stream,
-                            reasoning_effort=reasoning_effort,
-                            **kwargs,
-                        )
+                        reasoning_effort=reasoning_effort,
+                        **kwargs,
+                    )
                 except Exception as exc:
                     self._handle_attempt_error(exc, provider_name, model_id, attempt)
                 else:
@@ -303,27 +286,21 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    with self._span(
-                        "republic.llm.chat",
-                        provider=provider_name,
+                    response = await client.acompletion(
                         model=model_id,
+                        messages=messages_payload,
+                        tools=tools_payload,
+                        max_tokens=max_tokens,
                         stream=stream,
-                        attempt=attempt + 1,
-                        tool_count=tool_count,
-                    ):
-                        response = await client.acompletion(
-                            model=model_id,
-                            messages=messages_payload,
-                            tools=tools_payload,
-                            max_tokens=max_tokens,
-                            stream=stream,
-                            reasoning_effort=reasoning_effort,
-                            **kwargs,
-                        )
+                        reasoning_effort=reasoning_effort,
+                        **kwargs,
+                    )
                 except Exception as exc:
                     self._handle_attempt_error(exc, provider_name, model_id, attempt)
                 else:
                     result = on_response(response, provider_name, model_id, attempt)
+                    if inspect.isawaitable(result):
+                        result = await result
                     if result is self.RETRY:
                         continue
                     return result

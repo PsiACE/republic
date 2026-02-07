@@ -1,11 +1,11 @@
 DEFAULT_MODEL = "openai:gpt-4o-mini"
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "PsiACE"
 __author_email__ = "psiace@apache.org"
 __copyright__ = f"Copyright (c) 2026, {__author__}."
 __homepage__ = "https://github.com/psiace/republic"
-__docs__ = "Minimal, explicit LLM routing built on any-llm."
+__docs__ = "Minimal, tape-first LLM client with structured outputs."
 
 __all__ = [
     "DEFAULT_MODEL",

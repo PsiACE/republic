@@ -3,21 +3,17 @@
 from __future__ import annotations
 
 import warnings
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from typing import Any
 
-from any_llm.types.completion import CreateEmbeddingResponse
-from any_llm.types.model import Model
-
 from republic.__about__ import DEFAULT_MODEL
-from republic.clients.batch import BatchClient
+from republic.clients._internal import InternalOps
 from republic.clients.chat import ChatClient
-from republic.clients.responses import ResponsesClient
+from republic.clients.embedding import EmbeddingClient
 from republic.clients.text import TextClient
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
-from republic.core.telemetry import span as logfire_span
-from republic.tape import HandoffHandler, HandoffPolicy, Tape, TapeContext, TapeStore
+from republic.tape import Tape, TapeContext, TapeStore
 from republic.tools.executor import ToolExecutor
 
 
@@ -37,8 +33,6 @@ class LLM:
         verbose: int = 0,
         tape_store: TapeStore | None = None,
         context: TapeContext | None = None,
-        handoff_handler: HandoffHandler | None = None,
-        handoff_policy: HandoffPolicy | None = None,
         error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
         if verbose not in (0, 1, 2):
@@ -61,41 +55,19 @@ class LLM:
             api_base=api_base,
             client_args=client_args or {},
             verbose=verbose,
-            span=self._span,
             error_classifier=error_classifier,
         )
-        tool_executor = ToolExecutor(span=self._span)
-        self.chat: ChatClient = ChatClient(
+        tool_executor = ToolExecutor()
+        self.chat = ChatClient(
             self._core,
             tool_executor,
             store=tape_store,
             context=context,
-            handoff_handler=handoff_handler,
-            handoff_policy=handoff_policy,
         )
-        self.responses: ResponsesClient = ResponsesClient(self._core)
-        self.batch: BatchClient = BatchClient(self._core)
-        self.tools: ToolExecutor = tool_executor
-        self.text: TextClient = TextClient(self.chat)
-
-    def _span(self, name: str, **attributes: Any):
-        return logfire_span(name, **attributes)
-
-    def _call_provider(self, provider_name: str, model_id: str, span_name: str, fn):
-        client = self._core.get_client(provider_name)
-        try:
-            with self._core.span(span_name, provider=provider_name, model=model_id):
-                return fn(client)
-        except Exception as exc:
-            self._core.raise_wrapped(exc, provider_name, model_id)
-
-    async def _acall_provider(self, provider_name: str, model_id: str, span_name: str, fn):
-        client = self._core.get_client(provider_name)
-        try:
-            with self._core.span(span_name, provider=provider_name, model=model_id):
-                return await fn(client)
-        except Exception as exc:
-            self._core.raise_wrapped(exc, provider_name, model_id)
+        self.tools = tool_executor
+        self.text = TextClient(self.chat)
+        self.embeddings = EmbeddingClient(self._core)
+        self._internal = InternalOps(self._core)
 
     @property
     def model(self) -> str:
@@ -111,83 +83,136 @@ class LLM:
 
     @property
     def context(self) -> TapeContext:
-        return self.chat._default_context
+        return self.chat.default_context
 
     @context.setter
     def context(self, value: TapeContext) -> None:
-        self.chat._set_default_context(value)
+        self.chat._default_context = value
 
-    def tape(
-        self,
-        name: str,
-        *,
-        context: TapeContext | None = None,
-    ) -> Tape:
+    def tape(self, name: str, *, context: TapeContext | None = None) -> Tape:
         return Tape(name, self.chat, context=context)
 
     def tapes(self) -> list[str]:
-        return self.chat._list_tapes()
+        return self.chat._tape_store.list_tapes()
 
-    def embedding(
-        self,
-        inputs: str | list[str],
-        *,
-        model: str | None = None,
-        provider: str | None = None,
-        **kwargs: Any,
-    ) -> CreateEmbeddingResponse:
-        if model is None and provider is None:
-            provider_name, model_id = self._core.provider, self._core.model
-        else:
-            provider_name, model_id = self._core.resolve_model_provider(model or self._core.model, provider)
-        return self._call_provider(
-            provider_name,
-            model_id,
-            "republic.llm.embedding",
-            lambda client: client._embedding(model=model_id, inputs=inputs, **kwargs),
-        )
-
-    async def aembedding(
-        self,
-        inputs: str | list[str],
-        *,
-        model: str | None = None,
-        provider: str | None = None,
-        **kwargs: Any,
-    ) -> CreateEmbeddingResponse:
-        if model is None and provider is None:
-            provider_name, model_id = self._core.provider, self._core.model
-        else:
-            provider_name, model_id = self._core.resolve_model_provider(model or self._core.model, provider)
-        return await self._acall_provider(
-            provider_name,
-            model_id,
-            "republic.llm.embedding",
-            lambda client: client.aembedding(model=model_id, inputs=inputs, **kwargs),
-        )
-
-    def if_(self, input_text: str, question: str) -> bool:
+    def if_(self, input_text: str, question: str):
         return self.text.if_(input_text, question)
 
-    def classify(self, input_text: str, choices: list[str]) -> str:
+    def classify(self, input_text: str, choices: list[str]):
         return self.text.classify(input_text, choices)
 
-    def list_models(self, *, provider: str | None = None, **kwargs: Any) -> Sequence[Model]:
-        provider_name = provider or self._core.provider
-        return self._call_provider(
-            provider_name,
-            "-",
-            "republic.llm.list_models",
-            lambda client: client.list_models(**kwargs),
+    async def if_async(self, input_text: str, question: str):
+        return await self.text.if_async(input_text, question)
+
+    async def classify_async(self, input_text: str, choices: list[str]):
+        return await self.text.classify_async(input_text, choices)
+
+    def embed(
+        self,
+        inputs: str | list[str],
+        *,
+        model: str | None = None,
+        provider: str | None = None,
+        **kwargs: Any,
+    ):
+        return self.embeddings.embed(inputs, model=model, provider=provider, **kwargs)
+
+    async def embed_async(
+        self,
+        inputs: str | list[str],
+        *,
+        model: str | None = None,
+        provider: str | None = None,
+        **kwargs: Any,
+    ):
+        return await self.embeddings.embed_async(inputs, model=model, provider=provider, **kwargs)
+
+    def stream(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ):
+        return self.chat.stream(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            **kwargs,
         )
 
-    async def alist_models(self, *, provider: str | None = None, **kwargs: Any) -> Sequence[Model]:
-        provider_name = provider or self._core.provider
-        return await self._acall_provider(
-            provider_name,
-            "-",
-            "republic.llm.list_models",
-            lambda client: client.alist_models(**kwargs),
+    async def stream_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ):
+        return await self.chat.stream_async(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            **kwargs,
+        )
+
+    def stream_events(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        tools: Any = None,
+        **kwargs: Any,
+    ):
+        return self.chat.stream_events(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            tools=tools,
+            **kwargs,
+        )
+
+    async def stream_events_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        tools: Any = None,
+        **kwargs: Any,
+    ):
+        return await self.chat.stream_events_async(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            tools=tools,
+            **kwargs,
         )
 
     def __repr__(self) -> str:

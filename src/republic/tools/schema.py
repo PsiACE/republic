@@ -8,7 +8,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, NoReturn, TypeVar, cast
 
-from pydantic import BaseModel, TypeAdapter
+from pydantic import BaseModel, TypeAdapter, validate_call
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -46,10 +46,13 @@ def _raise_type_error(message: str, *, cause: Exception | None = None) -> NoRetu
     raise TypeError(message) from cause
 
 
-def _schema_from_signature(signature: inspect.Signature) -> dict[str, Any]:
+def _schema_from_signature(signature: inspect.Signature, *, ignore_params: set[str] | None = None) -> dict[str, Any]:
+    ignore = ignore_params or set()
     properties: dict[str, Any] = {}
     required: list[str] = []
     for param in signature.parameters.values():
+        if param.name in ignore:
+            continue
         if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
             continue
         properties[param.name] = _schema_from_annotation(param.annotation)
@@ -87,6 +90,7 @@ class Tool:
     description: str = ""
     parameters: dict[str, Any] = field(default_factory=dict)
     handler: Callable[..., Any] | None = None
+    context: bool = False
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -118,14 +122,31 @@ class Tool:
         *,
         name: str | None = None,
         description: str | None = None,
+        context: bool = False,
     ) -> Tool:
+        signature = inspect.signature(func)
+        if context and "context" not in signature.parameters:
+            _raise_type_error("Tool context is enabled but the callable lacks a 'context' parameter.")
         tool_name = name or _to_snake_case(_callable_name(func))
         tool_description = description if description is not None else (inspect.getdoc(func) or "")
-        parameters = _schema_from_signature(inspect.signature(func))
-        return cls(name=tool_name, description=tool_description, parameters=parameters, handler=func)
+        parameters = _schema_from_signature(signature, ignore_params={"context"} if context else None)
+        validated = validate_call(func)
+        return cls(
+            name=tool_name,
+            description=tool_description,
+            parameters=parameters,
+            handler=validated,
+            context=context,
+        )
 
     @classmethod
-    def from_model(cls, model: type[ModelT], handler: Callable[[ModelT], Any] | None = None) -> Tool:
+    def from_model(
+        cls,
+        model: type[ModelT],
+        handler: Callable[..., Any] | None = None,
+        *,
+        context: bool = False,
+    ) -> Tool:
         if handler is None:
 
             def _default_handler(payload: ModelT) -> Any:
@@ -134,7 +155,7 @@ class Tool:
             handler_fn = _default_handler
         else:
             handler_fn = handler
-        return tool_from_model(model, handler_fn)
+        return tool_from_model(model, handler_fn, context=context)
 
     @classmethod
     def convert_tools(cls, tools: ToolInput) -> list[Tool]:
@@ -189,20 +210,35 @@ def schema_from_model(
 
 def tool_from_model(
     model: type[ModelT],
-    handler: Callable[[ModelT], Any],
+    handler: Callable[..., Any],
     *,
     name: str | None = None,
     description: str | None = None,
+    context: bool = False,
 ) -> Tool:
     """Create a runnable Tool that validates inputs via a Pydantic model."""
     tool_name = name or _to_snake_case(model.__name__)
     tool_description = description if description is not None else (model.__doc__ or "")
 
+    if context:
+        signature = inspect.signature(handler)
+        if "context" not in signature.parameters:
+            _raise_type_error("Tool context is enabled but the handler lacks a 'context' parameter.")
+
     def _handler(*args: Any, **kwargs: Any) -> Any:
+        tool_context = kwargs.pop("context", None)
         parsed = model(*args, **kwargs)
+        if context:
+            return handler(parsed, context=tool_context)
         return handler(parsed)
 
-    return Tool(name=tool_name, description=tool_description, parameters=model.model_json_schema(), handler=_handler)
+    return Tool(
+        name=tool_name,
+        description=tool_description,
+        parameters=model.model_json_schema(),
+        handler=_handler,
+        context=context,
+    )
 
 
 ToolInput = ToolSet | Sequence[Any] | None
@@ -271,11 +307,12 @@ def tool(
     *,
     name: str | None = None,
     description: str | None = None,
+    context: bool = False,
 ) -> Tool | Callable[..., Any]:
     """Decorator to convert a function into a Tool instance."""
 
     def _create_tool(f: Callable[..., Any]) -> Tool:
-        return Tool.from_callable(f, name=name, description=description)
+        return Tool.from_callable(f, name=name, description=description, context=context)
 
     if func is None:
         return _create_tool

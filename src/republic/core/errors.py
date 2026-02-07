@@ -14,18 +14,13 @@ class ErrorKind(StrEnum):
     PROVIDER = "provider"
     TOOL = "tool"
     TEMPORARY = "temporary"
+    NOT_FOUND = "not_found"
     UNKNOWN = "unknown"
 
 
-@dataclass
+@dataclass(frozen=True)
 class RepublicError(Exception):
-    """Public error type for Republic.
-
-    Attributes:
-        kind: Stable, actionable error kind.
-        message: Human-readable description.
-        cause: Original exception for debugging.
-    """
+    """Public error type for Republic."""
 
     kind: ErrorKind
     message: str

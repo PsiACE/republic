@@ -2,24 +2,33 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator, Iterator, Sequence
-from dataclasses import dataclass, field
+import uuid
+from collections.abc import AsyncIterator, Callable, Iterator
+from dataclasses import dataclass
 from typing import Any
-
-from any_llm.types.completion import ChatCompletion, ChatCompletionChunk, ChatCompletionMessage, ReasoningEffort
 
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
-from republic.tape.context import TapeContext, build_messages
+from republic.core.results import (
+    AsyncStreamEvents,
+    AsyncTextStream,
+    ErrorPayload,
+    StreamEvent,
+    StreamEvents,
+    StreamState,
+    StructuredOutput,
+    TextStream,
+    ToolAutoResult,
+)
+from republic.tape.context import ContextSelection, TapeContext, build_messages
 from republic.tape.entries import TapeEntry
-from republic.tape.handoff import HandoffHandler, HandoffPolicy
 from republic.tape.query import TapeQuery
 from republic.tape.store import InMemoryTapeStore, TapeStore
+from republic.tools.context import ToolContext
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput, ToolSet, normalize_tools
 
-MessageInput = dict[str, Any] | ChatCompletionMessage
+MessageInput = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -29,23 +38,49 @@ class PreparedChat:
     toolset: ToolSet
     tape: str | None
     should_update: bool
+    context_error: ErrorPayload | None
+    run_id: str
+    system_prompt: str | None
 
-    @property
-    def tools_payload(self) -> list[dict[str, Any]] | None:
-        return self.toolset.payload
 
+class ToolCallAssembler:
+    def __init__(self) -> None:
+        self._calls: dict[object, dict[str, Any]] = {}
+        self._order: list[object] = []
 
-@dataclass
-class _StreamState:
-    collected: list[str] = field(default_factory=list)
-    tool_state: dict[int, dict[str, Any]] = field(default_factory=dict)
+    def add_deltas(self, tool_calls: list[Any]) -> None:
+        for tool_call in tool_calls:
+            key = getattr(tool_call, "id", None)
+            if key is None:
+                key = getattr(tool_call, "index", None)
+            if key is None:
+                key = len(self._order)
+            if key not in self._calls:
+                self._order.append(key)
+                self._calls[key] = {"function": {"name": "", "arguments": ""}}
+            entry = self._calls[key]
+            call_id = getattr(tool_call, "id", None)
+            if call_id:
+                entry["id"] = call_id
+            call_type = getattr(tool_call, "type", None)
+            if call_type:
+                entry["type"] = call_type
+            func = getattr(tool_call, "function", None)
+            if func is None:
+                continue
+            name = getattr(func, "name", None)
+            if name:
+                entry["function"]["name"] = name
+            arguments = getattr(func, "arguments", None)
+            if arguments:
+                entry["function"]["arguments"] = entry["function"].get("arguments", "") + arguments
 
-    def text(self) -> str:
-        return "".join(self.collected)
+    def finalize(self) -> list[dict[str, Any]]:
+        return [self._calls[key] for key in self._order]
 
 
 class ChatClient:
-    """Chat operations with predictable return types."""
+    """Chat operations with structured outputs."""
 
     def __init__(
         self,
@@ -53,27 +88,15 @@ class ChatClient:
         tool_executor: ToolExecutor,
         store: TapeStore | None = None,
         context: TapeContext | None = None,
-        handoff_handler: HandoffHandler | None = None,
-        handoff_policy: HandoffPolicy | None = None,
     ) -> None:
         self._core = core
         self._tool_executor = tool_executor
         self._tape_store = store or InMemoryTapeStore()
         self._default_context = context or TapeContext()
-        self._handoff_handler = handoff_handler
-        self._handoff_policy = handoff_policy
 
-    def _reject_reserved_kwargs(self, kwargs: dict[str, Any], *reserved: str) -> None:
-        for key in reserved:
-            if key in kwargs:
-                raise RepublicError(ErrorKind.INVALID_INPUT, f"'{key}' is not supported in this method.")
-
-    def _reject_tape_kwarg(self, kwargs: dict[str, Any]) -> None:
-        if "tape" in kwargs:
-            raise RepublicError(
-                ErrorKind.INVALID_INPUT,
-                "Use llm.tape(name) for stateful chat.",
-            )
+    @property
+    def default_context(self) -> TapeContext:
+        return self._default_context
 
     def _validate_chat_input(
         self,
@@ -81,448 +104,618 @@ class ChatClient:
         prompt: str | None,
         messages: list[MessageInput] | None,
         system_prompt: str | None,
-        images: Sequence[str] | str | None,
         tape: str | None,
-    ) -> None:
+    ) -> ErrorPayload | None:
         if prompt is not None and messages is not None:
-            raise RepublicError(
-                ErrorKind.INVALID_INPUT,
-                "Provide either prompt or messages, not both.",
-            )
+            return ErrorPayload(ErrorKind.INVALID_INPUT, "Provide either prompt or messages, not both.")
         if prompt is None and messages is None:
-            raise RepublicError(
+            return ErrorPayload(ErrorKind.INVALID_INPUT, "Either prompt or messages is required.")
+        if messages is not None and (system_prompt is not None or tape is not None):
+            return ErrorPayload(
                 ErrorKind.INVALID_INPUT,
-                "Either prompt or messages is required.",
+                "system_prompt and tape are not supported with messages input.",
             )
-        if messages is not None:
-            if system_prompt is not None:
-                raise RepublicError(
-                    ErrorKind.INVALID_INPUT,
-                    "system_prompt is not supported with messages. Include it in messages instead.",
-                )
-            if images is not None:
-                raise RepublicError(
-                    ErrorKind.INVALID_INPUT,
-                    "images are not supported with messages. Include image content in messages instead.",
-                )
-            if tape is not None:
-                raise RepublicError(
-                    ErrorKind.INVALID_INPUT,
-                    "tape is not supported with messages.",
-                )
-        if images is not None and prompt is None:
-            raise RepublicError(
-                ErrorKind.INVALID_INPUT,
-                "images require prompt to be set.",
-            )
+        return None
 
     def _prepare_messages(
         self,
         prompt: str | None,
         system_prompt: str | None,
-        images: Sequence[str] | str | None,
         tape: str | None,
         messages: list[MessageInput] | None,
         context: TapeContext | None = None,
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        self._validate_chat_input(
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], ErrorPayload | None]:
+        error = self._validate_chat_input(
             prompt=prompt,
             messages=messages,
             system_prompt=system_prompt,
-            images=images,
             tape=tape,
         )
+        if error is not None:
+            return [], [], error
+
         if messages is not None:
-            payload = [m.model_dump(exclude_none=True) if isinstance(m, ChatCompletionMessage) else m for m in messages]
-            return payload, []
+            payload = [dict(message) for message in messages]
+            return payload, [], None
 
         if prompt is None:
-            raise RepublicError(ErrorKind.INVALID_INPUT, "prompt is required when messages is not provided")
+            return [], [], ErrorPayload(ErrorKind.INVALID_INPUT, "prompt is required when messages is not provided")
 
-        user_content: Any = prompt
-        if images:
-            image_list = [images] if isinstance(images, str) else list(images)
-            content = [{"type": "text", "text": prompt}]
-            content.extend({"type": "image_url", "image_url": {"url": url}} for url in image_list)
-            user_content = content
-
-        user_message = {"role": "user", "content": user_content}
+        user_message = {"role": "user", "content": prompt}
 
         if tape is None:
+            payload: list[dict[str, Any]] = []
             if system_prompt:
-                return [{"role": "system", "content": system_prompt}, user_message], []
-            return [user_message], []
+                payload.append({"role": "system", "content": system_prompt})
+            payload.append(user_message)
+            return payload, [], None
 
-        history = self._read_messages(tape, context=context)
-        new_messages = [user_message]
-        payload: list[dict[str, Any]] = []
+        selection = self.read_messages(tape, context=context)
+        history = selection.messages
+        payload = []
         if system_prompt:
             payload.append({"role": "system", "content": system_prompt})
         payload.extend(history)
-        payload.extend(new_messages)
-        return payload, new_messages
+        payload.append(user_message)
+        return payload, [user_message], selection.error
 
     def _prepare_request(
         self,
         *,
         prompt: str | None,
         system_prompt: str | None,
-        images: Sequence[str] | str | None,
-        tape: str | None,
         messages: list[MessageInput] | None,
-        context: TapeContext | None = None,
+        tape: str | None,
+        context: TapeContext | None,
         tools: ToolInput,
         require_tools: bool = False,
         require_runnable: bool = False,
     ) -> PreparedChat:
         if require_tools and not tools:
-            raise RepublicError(ErrorKind.INVALID_INPUT, "tools are required for this operation.")
+            tools_error = ErrorPayload(ErrorKind.INVALID_INPUT, "tools are required for this operation.")
+        else:
+            tools_error = None
 
-        messages_payload, new_messages = self._prepare_messages(
+        payload, new_messages, context_error = self._prepare_messages(
             prompt,
             system_prompt,
-            images,
             tape,
             messages,
             context=context,
         )
-        toolset = self._normalize_tools(tools)
-
+        toolset, tool_error = self._normalize_tools(tools)
+        if tools_error is not None and context_error is None:
+            context_error = tools_error
+        if tool_error is not None:
+            context_error = tool_error if context_error is None else context_error
         if require_runnable:
             try:
                 toolset.require_runnable()
             except ValueError as exc:
-                raise RepublicError(ErrorKind.INVALID_INPUT, str(exc)) from exc
+                context_error = ErrorPayload(ErrorKind.INVALID_INPUT, str(exc))
 
         should_update = tape is not None and messages is None
+        run_id = uuid.uuid4().hex
         return PreparedChat(
-            payload=messages_payload,
+            payload=payload,
             new_messages=new_messages,
             toolset=toolset,
             tape=tape,
             should_update=should_update,
+            context_error=context_error,
+            run_id=run_id,
+            system_prompt=system_prompt,
         )
 
-    def _read_messages(
+    def _execute_sync(
         self,
-        tape: str,
+        prepared: PreparedChat,
         *,
-        context: TapeContext | None = None,
-    ) -> list[dict[str, Any]]:
-        entries = self._context_entries(tape)
+        tools_payload: list[dict[str, Any]] | None,
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
+        stream: bool,
+        tool_count: int,
+        kwargs: dict[str, Any],
+        on_response: Callable[[Any, str, str, int], Any],
+        on_error: Callable[[ErrorPayload], Any],
+    ) -> Any:
+        if prepared.context_error is not None:
+            return on_error(prepared.context_error)
+        try:
+            return self._core.run_chat_sync(
+                messages_payload=prepared.payload,
+                tools_payload=tools_payload,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=stream,
+                reasoning_effort=None,
+                tool_count=tool_count,
+                kwargs=kwargs,
+                on_response=on_response,
+            )
+        except RepublicError as exc:
+            return on_error(ErrorPayload(exc.kind, exc.message))
+
+    async def _execute_async(
+        self,
+        prepared: PreparedChat,
+        *,
+        tools_payload: list[dict[str, Any]] | None,
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
+        stream: bool,
+        tool_count: int,
+        kwargs: dict[str, Any],
+        on_response: Callable[[Any, str, str, int], Any],
+        on_error: Callable[[ErrorPayload], Any],
+    ) -> Any:
+        if prepared.context_error is not None:
+            return on_error(prepared.context_error)
+        try:
+            return await self._core.run_chat_async(
+                messages_payload=prepared.payload,
+                tools_payload=tools_payload,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=stream,
+                reasoning_effort=None,
+                tool_count=tool_count,
+                kwargs=kwargs,
+                on_response=on_response,
+            )
+        except RepublicError as exc:
+            return on_error(ErrorPayload(exc.kind, exc.message))
+
+    def _normalize_tools(self, tools: ToolInput) -> tuple[ToolSet, ErrorPayload | None]:
+        try:
+            return normalize_tools(tools), None
+        except (ValueError, TypeError) as exc:
+            return ToolSet([], []), ErrorPayload(ErrorKind.INVALID_INPUT, str(exc))
+
+    def read_entries(self, tape: str) -> list[TapeEntry]:
+        return self._tape_store.read(tape) or []
+
+    def read_messages(self, tape: str, *, context: TapeContext | None = None) -> ContextSelection:
+        entries = self.read_entries(tape)
         active_context = context or self._default_context
         return build_messages(entries, active_context)
 
-    def _context_entries(self, tape: str) -> list[TapeEntry]:
-        return self._read_entries(tape)
+    def append_entry(self, tape: str, entry: TapeEntry) -> None:
+        self._tape_store.append(tape, entry)
 
-    def _append_tape_messages(self, tape: str, messages: list[dict[str, Any]]) -> None:
+    def reset_tape(self, tape: str) -> None:
+        self._tape_store.reset(tape)
+
+    def query_tape(self, tape: str) -> TapeQuery:
+        return TapeQuery(tape=tape, store=self._tape_store)
+
+    def handoff(self, tape: str, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
+        entry = TapeEntry.anchor(name, state=state, **meta)
+        event = TapeEntry.event("handoff", {"name": name, "state": state or {}}, **meta)
+        self._tape_store.append(tape, entry)
+        self._tape_store.append(tape, event)
+        return [entry, event]
+
+    def _append_tape_messages(self, tape: str, messages: list[dict[str, Any]], *, meta: dict[str, Any]) -> None:
         for message in messages:
-            self._tape_store.append(tape, TapeEntry.message(message))
+            self._tape_store.append(tape, TapeEntry.message(message, **meta))
 
     def _append_tool_events(
         self,
         tape: str,
         tool_calls: list[dict[str, Any]] | None,
-        tool_result: str | None,
+        tool_results: list[Any] | None,
+        *,
+        meta: dict[str, Any],
     ) -> None:
         if tool_calls:
-            self._tape_store.append(tape, TapeEntry(0, "tool_call", {"calls": tool_calls}))
-        if tool_result is not None:
-            self._tape_store.append(tape, TapeEntry(0, "tool_result", {"result": tool_result}))
+            self._tape_store.append(tape, TapeEntry.tool_call(tool_calls, **meta))
+        if tool_results is not None:
+            self._tape_store.append(tape, TapeEntry.tool_result(tool_results, **meta))
+
+    def _append_system_prompt(self, tape: str, system_prompt: str | None, *, meta: dict[str, Any]) -> None:
+        if system_prompt:
+            self._tape_store.append(tape, TapeEntry.system(system_prompt, **meta))
+
+    def _append_error(self, tape: str, error: ErrorPayload, *, meta: dict[str, Any]) -> None:
+        self._tape_store.append(tape, TapeEntry.error(error, **meta))
+
+    def _append_run_event(
+        self,
+        tape: str,
+        *,
+        meta: dict[str, Any],
+        status: str,
+        response: Any | None,
+        provider: str | None,
+        model: str | None,
+        usage: dict[str, Any] | None = None,
+    ) -> None:
+        data: dict[str, Any] = {"status": status}
+        resolved_usage = usage or self._extract_usage(response)
+        if resolved_usage is not None:
+            data["usage"] = resolved_usage
+        if provider:
+            data["provider"] = provider
+        if model:
+            data["model"] = model
+        self._tape_store.append(tape, TapeEntry.event("run", data, **meta))
 
     def _update_tape(
         self,
         prepared: PreparedChat,
-        response_text: str,
+        response_text: str | None,
         *,
         tool_calls: list[dict[str, Any]] | None = None,
-        tool_result: str | None = None,
+        tool_results: list[Any] | None = None,
+        error: ErrorPayload | None = None,
+        response: Any | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        usage: dict[str, Any] | None = None,
     ) -> None:
         if prepared.tape is None:
             return
-        self._append_tape_messages(prepared.tape, prepared.new_messages)
-        self._append_tool_events(prepared.tape, tool_calls, tool_result)
-        self._tape_store.append(
+        meta = {"run_id": prepared.run_id}
+        self._append_system_prompt(prepared.tape, prepared.system_prompt, meta=meta)
+        if prepared.context_error is not None:
+            self._append_error(prepared.tape, prepared.context_error, meta=meta)
+        self._append_tape_messages(prepared.tape, prepared.new_messages, meta=meta)
+        self._append_tool_events(prepared.tape, tool_calls, tool_results, meta=meta)
+        if error is not None:
+            self._append_error(prepared.tape, error, meta=meta)
+        if response_text is not None:
+            self._tape_store.append(
+                prepared.tape,
+                TapeEntry.message({"role": "assistant", "content": response_text}, **meta),
+            )
+        self._append_run_event(
             prepared.tape,
-            TapeEntry.message({"role": "assistant", "content": response_text}),
+            meta=meta,
+            status="error" if error is not None else "ok",
+            response=response,
+            provider=provider,
+            model=model,
+            usage=usage,
         )
 
-    def _extract_text(self, response: Any) -> str:
-        if isinstance(response, str):
-            return response
-        if isinstance(response, ChatCompletion):
-            if not response.choices:
-                return ""
-            message = response.choices[0].message
-            return message.content or ""
-        return ""
+    @staticmethod
+    def _empty_iterator() -> Iterator[str]:
+        return iter(())
 
     @staticmethod
-    def _stringify_tool_result(result: Any) -> str:
-        if isinstance(result, str):
-            return result
-        try:
-            return json.dumps(result)
-        except TypeError:
-            return str(result)
+    async def _empty_async_iterator() -> AsyncIterator[str]:
+        if False:
+            yield ""
 
-    def _extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
-        if not isinstance(response, ChatCompletion):
-            return []
-        if not response.choices:
-            return []
-        tool_calls = response.choices[0].message.tool_calls or []
-        calls = []
-        for tool_call in tool_calls:
-            calls.append({
-                "function": {
-                    "name": tool_call.function.name,
-                    "arguments": tool_call.function.arguments,
-                }
-            })
-        return calls
+    def _structured_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> StructuredOutput:
+        if prepared.should_update:
+            self._update_tape(prepared, None, error=error)
+        return StructuredOutput(None, error)
 
-    def _text_or_retry(
-        self,
-        response: Any,
+    def _tool_auto_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> ToolAutoResult:
+        if prepared.should_update:
+            self._update_tape(prepared, None, error=error)
+        return ToolAutoResult.error_result(error)
+
+    def _stream_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> TextStream:
+        if prepared.should_update:
+            self._update_tape(prepared, None, error=error)
+        return TextStream(self._empty_iterator(), state=StreamState(error=error))
+
+    def _stream_async_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> AsyncTextStream:
+        if prepared.should_update:
+            self._update_tape(prepared, None, error=error)
+        return AsyncTextStream(self._empty_async_iterator(), state=StreamState(error=error))
+
+    def _event_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> StreamEvents:
+        if prepared.should_update:
+            self._update_tape(prepared, None, error=error)
+        state = StreamState(error=error)
+        events = [
+            StreamEvent("error", error.as_dict()),
+            StreamEvent(
+                "final",
+                self._final_event_data(
+                    text=None,
+                    tool_calls=[],
+                    tool_results=[],
+                    usage=None,
+                    error=error,
+                ),
+            ),
+        ]
+        return StreamEvents(iter(events), state=state)
+
+    def _event_async_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> AsyncStreamEvents:
+        if prepared.should_update:
+            self._update_tape(prepared, None, error=error)
+        state = StreamState(error=error)
+
+        async def _iterator() -> AsyncIterator[StreamEvent]:
+            yield StreamEvent("error", error.as_dict())
+            yield StreamEvent(
+                "final",
+                self._final_event_data(
+                    text=None,
+                    tool_calls=[],
+                    tool_results=[],
+                    usage=None,
+                    error=error,
+                ),
+            )
+
+        return AsyncStreamEvents(_iterator(), state=state)
+
+    @staticmethod
+    def _final_event_data(
         *,
+        text: str | None,
+        tool_calls: list[dict[str, Any]],
+        tool_results: list[Any],
+        usage: dict[str, Any] | None,
+        error: ErrorPayload | None,
+    ) -> dict[str, Any]:
+        return {
+            "text": text,
+            "tool_calls": tool_calls,
+            "tool_results": tool_results,
+            "usage": usage,
+            "ok": error is None,
+        }
+
+    def _finalize_text_stream(
+        self,
+        prepared: PreparedChat,
+        *,
+        text: str | None,
+        tool_calls: list[dict[str, Any]],
+        state: StreamState,
         provider_name: str,
         model_id: str,
         attempt: int,
+        usage: dict[str, Any] | None = None,
+        response: Any | None = None,
+        log_empty: bool = False,
+    ) -> None:
+        if not text and not tool_calls and state.error is None:
+            empty_error = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
+            if log_empty:
+                self._core.log_error(empty_error, provider_name, model_id, attempt)
+            state.error = ErrorPayload(empty_error.kind, empty_error.message)
+        state.usage = usage
+        if prepared.should_update:
+            self._update_tape(
+                prepared,
+                text or None,
+                tool_calls=tool_calls or None,
+                tool_results=None,
+                error=state.error,
+                response=response,
+                provider=provider_name,
+                model=model_id,
+                usage=usage,
+            )
+
+    def _finalize_event_stream(
+        self,
         prepared: PreparedChat,
-    ) -> Any:
+        *,
+        parts: list[str],
+        tool_calls: list[dict[str, Any]],
+        state: StreamState,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+        usage: dict[str, Any] | None,
+    ) -> tuple[list[StreamEvent], list[Any]]:
+        events: list[StreamEvent] = []
+        for idx, call in enumerate(tool_calls):
+            events.append(StreamEvent("tool_call", {"index": idx, "call": call}))
+
+        tool_results, tool_error = self._execute_tool_calls(
+            prepared,
+            tool_calls,
+            provider_name,
+            model_id,
+        )
+        if tool_results:
+            for idx, result in enumerate(tool_results):
+                events.append(StreamEvent("tool_result", {"index": idx, "result": result}))
+        if tool_error is not None:
+            state.error = tool_error
+            events.append(StreamEvent("error", tool_error.as_dict()))
+
+        if not parts and not tool_calls and state.error is None:
+            empty = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
+            self._core.log_error(empty, provider_name, model_id, attempt)
+            empty_error = ErrorPayload(empty.kind, empty.message)
+            state.error = empty_error
+            events.append(StreamEvent("error", empty_error.as_dict()))
+
+        if usage is not None:
+            events.append(StreamEvent("usage", usage))
+
+        events.append(
+            StreamEvent(
+                "final",
+                self._final_event_data(
+                    text="".join(parts) if parts else None,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    usage=usage,
+                    error=state.error,
+                ),
+            )
+        )
+        return events, tool_results
+
+    def _finalize_event_stream_state(
+        self,
+        prepared: PreparedChat,
+        *,
+        parts: list[str],
+        tool_calls: list[dict[str, Any]] | None,
+        tool_results: list[Any],
+        state: StreamState,
+        provider_name: str,
+        model_id: str,
+        usage: dict[str, Any] | None,
+        assembler: ToolCallAssembler,
+    ) -> list[dict[str, Any]]:
+        state.usage = usage
+        final_calls = tool_calls or assembler.finalize()
+        if prepared.should_update:
+            self._update_tape(
+                prepared,
+                "".join(parts) if parts else None,
+                tool_calls=final_calls or None,
+                tool_results=tool_results or None,
+                error=state.error,
+                provider=provider_name,
+                model=model_id,
+                usage=usage,
+            )
+        return final_calls
+
+    def _error_event_sequence(
+        self,
+        *,
+        parts: list[str],
+        tool_calls: list[dict[str, Any]],
+        tool_results: list[Any],
+        usage: dict[str, Any] | None,
+        error: ErrorPayload,
+    ) -> list[StreamEvent]:
+        return [
+            StreamEvent("error", error.as_dict()),
+            StreamEvent(
+                "final",
+                self._final_event_data(
+                    text="".join(parts) if parts else None,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    usage=usage,
+                    error=error,
+                ),
+            ),
+        ]
+
+    def _handle_create_response(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> StructuredOutput | object:
         text = self._extract_text(response)
         if text:
             if prepared.should_update:
-                self._update_tape(prepared, text)
-            return text
+                self._update_tape(
+                    prepared,
+                    text,
+                    response=response,
+                    provider=provider_name,
+                    model=model_id,
+                )
+            return StructuredOutput(text, None)
         empty_error = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
         self._core.log_error(empty_error, provider_name, model_id, attempt)
         return self._core.RETRY
 
-    @staticmethod
-    def _accumulate_tool_calls(tool_state: dict[int, dict[str, Any]], tool_calls: Sequence[Any]) -> None:
-        for tool_call in tool_calls:
-            index = getattr(tool_call, "index", None)
-            if index is None:
-                index = len(tool_state)
-            entry = tool_state.setdefault(index, {"function": {"name": "", "arguments": ""}})
+    def _handle_tool_calls_response(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> StructuredOutput:
+        calls = self._extract_tool_calls(response)
+        if prepared.should_update:
+            self._update_tape(
+                prepared,
+                None,
+                tool_calls=calls,
+                tool_results=[],
+                response=response,
+                provider=provider_name,
+                model=model_id,
+            )
+        return StructuredOutput(calls, None)
 
-            call_id = getattr(tool_call, "id", None)
-            if call_id:
-                entry["id"] = call_id
-            call_type = getattr(tool_call, "type", None)
-            if call_type:
-                entry["type"] = call_type
-
-            function = getattr(tool_call, "function", None)
-            if function is None:
-                continue
-            name = getattr(function, "name", None)
-            if name:
-                entry["function"]["name"] = name
-            arguments = getattr(function, "arguments", None)
-            if arguments:
-                entry["function"]["arguments"] += arguments
-
-    @staticmethod
-    def _finalize_tool_calls(tool_state: dict[int, dict[str, Any]]) -> list[dict[str, Any]]:
-        return [tool_state[idx] for idx in sorted(tool_state)]
-
-    def _handle_chunk(self, chunk: ChatCompletionChunk, state: _StreamState) -> str:
-        if not chunk.choices:
-            return ""
-        delta = chunk.choices[0].delta
-        content = delta.content or ""
-        if content:
-            state.collected.append(content)
-
-        tool_calls = getattr(delta, "tool_calls", None)
+    def _handle_tools_auto_response(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> ToolAutoResult | object:
+        tool_calls = self._extract_tool_calls(response)
         if tool_calls:
-            self._accumulate_tool_calls(state.tool_state, tool_calls)
-        return content
+            tool_context = ToolContext(
+                tape=prepared.tape,
+                run_id=prepared.run_id,
+                meta={"provider": provider_name, "model": model_id},
+                state={},
+            )
+            execution = self._tool_executor.execute(
+                tool_calls,
+                tools=prepared.toolset.runnable,
+                context=tool_context,
+            )
+            if prepared.should_update:
+                if execution.error is not None:
+                    self._update_tape(
+                        prepared,
+                        None,
+                        tool_calls=execution.tool_calls,
+                        tool_results=execution.tool_results,
+                        error=execution.error,
+                        response=response,
+                        provider=provider_name,
+                        model=model_id,
+                    )
+                else:
+                    self._update_tape(
+                        prepared,
+                        None,
+                        tool_calls=execution.tool_calls,
+                        tool_results=execution.tool_results,
+                        response=response,
+                        provider=provider_name,
+                        model=model_id,
+                    )
+            if execution.error is not None:
+                return ToolAutoResult.error_result(
+                    execution.error,
+                    tool_calls=execution.tool_calls,
+                    tool_results=execution.tool_results,
+                )
+            return ToolAutoResult.tools_result(execution.tool_calls, execution.tool_results)
 
-    def _normalize_tools(self, tools: ToolInput) -> ToolSet:
-        try:
-            return normalize_tools(tools)
-        except ValueError as exc:
-            raise RepublicError(ErrorKind.INVALID_INPUT, str(exc)).with_cause(exc) from exc
-        except TypeError as exc:
-            raise RepublicError(ErrorKind.INVALID_INPUT, str(exc)).with_cause(exc) from exc
-
-    def __call__(self, prompt: str | None = None, **kwargs: Any) -> str:
-        return self.create(prompt, **kwargs)
-
-    def _run_sync(
-        self,
-        prepared: PreparedChat,
-        *,
-        model: str | None,
-        provider: str | None,
-        max_tokens: int | None,
-        stream: bool,
-        reasoning_effort: ReasoningEffort | None,
-        kwargs: dict[str, Any],
-        on_response: Any,
-    ) -> Any:
-        return self._core.run_chat_sync(
-            messages_payload=prepared.payload,
-            tools_payload=prepared.tools_payload,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=stream,
-            reasoning_effort=reasoning_effort,
-            tool_count=len(prepared.tools_payload or []),
-            kwargs=kwargs,
-            on_response=on_response,
-        )
-
-    async def _run_async(
-        self,
-        prepared: PreparedChat,
-        *,
-        model: str | None,
-        provider: str | None,
-        max_tokens: int | None,
-        stream: bool,
-        reasoning_effort: ReasoningEffort | None,
-        kwargs: dict[str, Any],
-        on_response: Any,
-    ) -> Any:
-        return await self._core.run_chat_async(
-            messages_payload=prepared.payload,
-            tools_payload=prepared.tools_payload,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=stream,
-            reasoning_effort=reasoning_effort,
-            tool_count=len(prepared.tools_payload or []),
-            kwargs=kwargs,
-            on_response=on_response,
-        )
-
-    def _stream_text(
-        self,
-        response: Iterator[ChatCompletionChunk],
-        *,
-        prepared: PreparedChat,
-        provider: str,
-        model: str,
-    ) -> Iterator[str]:
-        state = _StreamState()
-        with self._core.span("republic.llm.stream", provider=provider, model=model):
-            for chunk in response:
-                content = self._handle_chunk(chunk, state)
-                if content:
-                    yield content
-
-        if prepared.should_update and prepared.tape and state.collected:
-            self._update_tape(prepared, state.text())
-
-    async def _stream_text_async(
-        self,
-        response: AsyncIterator[ChatCompletionChunk],
-        *,
-        prepared: PreparedChat,
-        provider: str,
-        model: str,
-    ) -> AsyncIterator[str]:
-        state = _StreamState()
-        with self._core.span("republic.llm.stream", provider=provider, model=model):
-            async for chunk in response:
-                content = self._handle_chunk(chunk, state)
-                if content:
-                    yield content
-
-        if prepared.should_update and prepared.tape and state.collected:
-            self._update_tape(prepared, state.text())
-
-    def _stream_text_with_tools(
-        self,
-        response: Iterator[ChatCompletionChunk],
-        *,
-        prepared: PreparedChat,
-        tools: Sequence[Any],
-        provider: str,
-        model: str,
-    ) -> Iterator[str]:
-        state = _StreamState()
-        tool_result: str | None = None
-        tool_calls: list[dict[str, Any]] | None = None
-
-        with self._core.span("republic.llm.stream", provider=provider, model=model, tool_count=len(tools)):
-            for chunk in response:
-                content = self._handle_chunk(chunk, state)
-                if content:
-                    yield content
-
-        if state.tool_state:
-            tool_calls = self._finalize_tool_calls(state.tool_state)
-            result = self._tool_executor.execute(tool_calls, tools=tools)
-            if result is not None:
-                tool_result = self._stringify_tool_result(result)
-                yield tool_result
-
-        if prepared.should_update and prepared.tape:
-            if state.collected:
+        text = self._extract_text(response)
+        if text:
+            if prepared.should_update:
                 self._update_tape(
                     prepared,
-                    state.text(),
-                    tool_calls=tool_calls,
-                    tool_result=tool_result,
+                    text,
+                    response=response,
+                    provider=provider_name,
+                    model=model_id,
                 )
-            elif tool_result is not None:
-                self._update_tape(
-                    prepared,
-                    tool_result,
-                    tool_calls=tool_calls,
-                    tool_result=tool_result,
-                )
+            return ToolAutoResult.text_result(text)
 
-    async def _stream_text_with_tools_async(
-        self,
-        response: AsyncIterator[ChatCompletionChunk],
-        *,
-        prepared: PreparedChat,
-        tools: Sequence[Any],
-        provider: str,
-        model: str,
-    ) -> AsyncIterator[str]:
-        state = _StreamState()
-        tool_result: str | None = None
-        tool_calls: list[dict[str, Any]] | None = None
-
-        with self._core.span("republic.llm.stream", provider=provider, model=model, tool_count=len(tools)):
-            async for chunk in response:
-                content = self._handle_chunk(chunk, state)
-                if content:
-                    yield content
-
-        if state.tool_state:
-            tool_calls = self._finalize_tool_calls(state.tool_state)
-            result = self._tool_executor.execute(tool_calls, tools=tools)
-            if result is not None:
-                tool_result = self._stringify_tool_result(result)
-                yield tool_result
-
-        if prepared.should_update and prepared.tape:
-            if state.collected:
-                self._update_tape(
-                    prepared,
-                    state.text(),
-                    tool_calls=tool_calls,
-                    tool_result=tool_result,
-                )
-            elif tool_result is not None:
-                self._update_tape(
-                    prepared,
-                    tool_result,
-                    tool_calls=tool_calls,
-                    tool_result=tool_result,
-                )
+        empty_error = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
+        self._core.log_error(empty_error, provider_name, model_id, attempt)
+        return self._core.RETRY
 
     def create(
         self,
@@ -533,276 +726,35 @@ class ChatClient:
         provider: str | None = None,
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> str:
-        self._reject_tape_kwarg(kwargs)
-        return self._create(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def _create(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
         tape: str | None = None,
         context: TapeContext | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
-        self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
+    ) -> StructuredOutput:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
-            images=images,
-            tape=tape,
             messages=messages,
+            tape=tape,
             context=context,
             tools=None,
         )
-
-        def _handle(response: Any, provider_name: str, model_id: str, attempt: int) -> Any:
-            return self._text_or_retry(
-                response,
-                provider_name=provider_name,
-                model_id=model_id,
-                attempt=attempt,
-                prepared=prepared,
-            )
-
-        return self._run_sync(
+        return self._execute_sync(
             prepared,
+            tools_payload=None,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
             stream=False,
-            reasoning_effort=reasoning_effort,
+            tool_count=0,
             kwargs=kwargs,
-            on_response=_handle,
-        )
-
-    def stream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Iterator[str]:
-        self._reject_tape_kwarg(kwargs)
-        return self._stream(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def _stream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tape: str | None = None,
-        context: TapeContext | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Iterator[str]:
-        self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
-        prepared = self._prepare_request(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            images=images,
-            tape=tape,
-            messages=messages,
-            context=context,
-            tools=None,
-        )
-
-        def _handle(response: Any, provider_name: str, model_id: str, _attempt: int) -> Any:
-            return self._stream_text(
+            on_response=lambda response, provider_name, model_id, attempt: self._handle_create_response(
+                prepared,
                 response,
-                prepared=prepared,
-                provider=provider_name,
-                model=model_id,
-            )
-
-        return self._run_sync(
-            prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
-        )
-
-    def raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> ChatCompletion:
-        self._reject_tape_kwarg(kwargs)
-        return self._raw(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def _raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tape: str | None = None,
-        context: TapeContext | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> ChatCompletion:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
-        prepared = self._prepare_request(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            images=images,
-            tape=tape,
-            messages=messages,
-            context=context,
-            tools=tools,
-        )
-
-        def _handle(response: Any, _provider_name: str, _model_id: str, _attempt: int) -> Any:
-            return response
-
-        return self._run_sync(
-            prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
-        )
-
-    def stream_raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Iterator[ChatCompletionChunk]:
-        self._reject_tape_kwarg(kwargs)
-        return self._stream_raw(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def _stream_raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tape: str | None = None,
-        context: TapeContext | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Iterator[ChatCompletionChunk]:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
-        prepared = self._prepare_request(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            images=images,
-            tape=tape,
-            messages=messages,
-            context=context,
-            tools=tools,
-        )
-
-        def _handle(response: Any, _provider_name: str, _model_id: str, _attempt: int) -> Any:
-            return response
-
-        return self._run_sync(
-            prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._structured_error_result(prepared, error),
         )
 
     def tool_calls(
@@ -814,65 +766,37 @@ class ChatClient:
         provider: str | None = None,
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        self._reject_tape_kwarg(kwargs)
-        return self._tool_calls(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def _tool_calls(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
         tape: str | None = None,
         context: TapeContext | None = None,
         tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
+    ) -> StructuredOutput:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
-            images=images,
-            tape=tape,
             messages=messages,
+            tape=tape,
             context=context,
             tools=tools,
             require_tools=True,
         )
-
-        def _handle(response: Any, _provider_name: str, _model_id: str, _attempt: int) -> Any:
-            return self._extract_tool_calls(response)
-
-        return self._run_sync(
+        return self._execute_sync(
             prepared,
+            tools_payload=prepared.toolset.payload,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
             stream=False,
-            reasoning_effort=reasoning_effort,
+            tool_count=len(prepared.toolset.payload or []),
             kwargs=kwargs,
-            on_response=_handle,
+            on_response=lambda response, provider_name, model_id, attempt: self._handle_tool_calls_response(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._structured_error_result(prepared, error),
         )
 
     def tools_auto(
@@ -884,164 +808,41 @@ class ChatClient:
         provider: str | None = None,
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        self._reject_tape_kwarg(kwargs)
-        return self._tools_auto(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def _tools_auto(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
         tape: str | None = None,
         context: TapeContext | None = None,
         tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> Any:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
+    ) -> ToolAutoResult:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
-            images=images,
-            tape=tape,
             messages=messages,
+            tape=tape,
             context=context,
             tools=tools,
             require_tools=True,
             require_runnable=True,
         )
-
-        def _handle(response: Any, provider_name: str, model_id: str, attempt: int) -> Any:
-            tool_calls = self._extract_tool_calls(response)
-            if tool_calls:
-                result = self._tool_executor.execute(tool_calls, tools=prepared.toolset.runnable)
-                if result is not None and prepared.should_update:
-                    result_text = self._stringify_tool_result(result)
-                    self._update_tape(
-                        prepared,
-                        result_text,
-                        tool_calls=tool_calls,
-                        tool_result=result_text,
-                    )
-                return result if result is not None else ""
-            return self._text_or_retry(
-                response,
-                provider_name=provider_name,
-                model_id=model_id,
-                attempt=attempt,
-                prepared=prepared,
-            )
-
-        return self._run_sync(
+        return self._execute_sync(
             prepared,
+            tools_payload=prepared.toolset.payload,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
             stream=False,
-            reasoning_effort=reasoning_effort,
+            tool_count=len(prepared.toolset.payload or []),
             kwargs=kwargs,
-            on_response=_handle,
-        )
-
-    def tools_auto_stream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Iterator[str]:
-        self._reject_tape_kwarg(kwargs)
-        return self._tools_auto_stream(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def _tools_auto_stream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tape: str | None = None,
-        context: TapeContext | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Iterator[str]:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
-        prepared = self._prepare_request(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            images=images,
-            tape=tape,
-            messages=messages,
-            context=context,
-            tools=tools,
-            require_tools=True,
-            require_runnable=True,
-        )
-
-        def _handle(response: Any, provider_name: str, model_id: str, _attempt: int) -> Any:
-            return self._stream_text_with_tools(
+            on_response=lambda response, provider_name, model_id, attempt: self._handle_tools_auto_response(
+                prepared,
                 response,
-                prepared=prepared,
-                tools=prepared.toolset.runnable,
-                provider=provider_name,
-                model=model_id,
-            )
-
-        return self._run_sync(
-            prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._tool_auto_error_result(prepared, error),
         )
 
-    async def acreate(
+    async def create_async(
         self,
         prompt: str | None = None,
         *,
@@ -1050,70 +851,38 @@ class ChatClient:
         provider: str | None = None,
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> str:
-        self._reject_tape_kwarg(kwargs)
-        return await self._acreate(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    async def _acreate(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
         tape: str | None = None,
         context: TapeContext | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
-        self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
+    ) -> StructuredOutput:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
-            images=images,
-            tape=tape,
             messages=messages,
+            tape=tape,
             context=context,
             tools=None,
         )
-
-        def _handle(response: Any, provider_name: str, model_id: str, attempt: int) -> Any:
-            return self._text_or_retry(
-                response,
-                provider_name=provider_name,
-                model_id=model_id,
-                attempt=attempt,
-                prepared=prepared,
-            )
-
-        return await self._run_async(
+        return await self._execute_async(
             prepared,
+            tools_payload=None,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
             stream=False,
-            reasoning_effort=reasoning_effort,
+            tool_count=0,
             kwargs=kwargs,
-            on_response=_handle,
+            on_response=lambda response, provider_name, model_id, attempt: self._handle_create_response(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._structured_error_result(prepared, error),
         )
 
-    async def astream(
+    async def tool_calls_async(
         self,
         prompt: str | None = None,
         *,
@@ -1122,69 +891,163 @@ class ChatClient:
         provider: str | None = None,
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[str]:
-        self._reject_tape_kwarg(kwargs)
-        return await self._astream(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    async def _astream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
         tape: str | None = None,
         context: TapeContext | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
+        tools: ToolInput = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str]:
-        self._reject_reserved_kwargs(kwargs, "stream", "tools", "auto_call_tools", "full_response")
+    ) -> StructuredOutput:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
-            images=images,
-            tape=tape,
             messages=messages,
+            tape=tape,
+            context=context,
+            tools=tools,
+            require_tools=True,
+        )
+        return await self._execute_async(
+            prepared,
+            tools_payload=prepared.toolset.payload,
+            model=model,
+            provider=provider,
+            max_tokens=max_tokens,
+            stream=False,
+            tool_count=len(prepared.toolset.payload or []),
+            kwargs=kwargs,
+            on_response=lambda response, provider_name, model_id, attempt: self._handle_tool_calls_response(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._structured_error_result(prepared, error),
+        )
+
+    async def tools_auto_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
+        tools: ToolInput = None,
+        **kwargs: Any,
+    ) -> ToolAutoResult:
+        prepared = self._prepare_request(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            messages=messages,
+            tape=tape,
+            context=context,
+            tools=tools,
+            require_tools=True,
+            require_runnable=True,
+        )
+        return await self._execute_async(
+            prepared,
+            tools_payload=prepared.toolset.payload,
+            model=model,
+            provider=provider,
+            max_tokens=max_tokens,
+            stream=False,
+            tool_count=len(prepared.toolset.payload or []),
+            kwargs=kwargs,
+            on_response=lambda response, provider_name, model_id, attempt: self._handle_tools_auto_response(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._tool_auto_error_result(prepared, error),
+        )
+
+    def stream(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
+        **kwargs: Any,
+    ) -> TextStream:
+        prepared = self._prepare_request(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            messages=messages,
+            tape=tape,
             context=context,
             tools=None,
         )
-
-        def _handle(response: Any, provider_name: str, model_id: str, _attempt: int) -> Any:
-            return self._stream_text_async(
+        return self._execute_sync(
+            prepared,
+            tools_payload=None,
+            model=model,
+            provider=provider,
+            max_tokens=max_tokens,
+            stream=True,
+            tool_count=0,
+            kwargs=kwargs,
+            on_response=lambda response, provider_name, model_id, attempt: self._build_text_stream(
+                prepared,
                 response,
-                prepared=prepared,
-                provider=provider_name,
-                model=model_id,
-            )
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._stream_error_result(prepared, error),
+        )
 
-        return await self._run_async(
+    async def stream_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[MessageInput] | None = None,
+        max_tokens: int | None = None,
+        tape: str | None = None,
+        context: TapeContext | None = None,
+        **kwargs: Any,
+    ) -> AsyncTextStream:
+        prepared = self._prepare_request(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            messages=messages,
+            tape=tape,
+            context=context,
+            tools=None,
+        )
+        return await self._execute_async(
             prepared,
+            tools_payload=None,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
             stream=True,
-            reasoning_effort=reasoning_effort,
+            tool_count=0,
             kwargs=kwargs,
-            on_response=_handle,
+            on_response=lambda response, provider_name, model_id, attempt: self._build_async_text_stream(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._stream_async_error_result(prepared, error),
         )
 
-    async def araw(
+    def stream_events(
         self,
         prompt: str | None = None,
         *,
@@ -1193,106 +1056,39 @@ class ChatClient:
         provider: str | None = None,
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tape: str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> ChatCompletion:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
-        prepared = self._prepare_request(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            images=images,
-            tape=tape,
-            messages=messages,
-            tools=tools,
-        )
-
-        def _handle(response: Any, _provider_name: str, _model_id: str, _attempt: int) -> Any:
-            return response
-
-        return await self._run_async(
-            prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
-        )
-
-    async def astream_raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[ChatCompletionChunk]:
-        self._reject_tape_kwarg(kwargs)
-        return await self._astream_raw(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    async def _astream_raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
         tape: str | None = None,
         context: TapeContext | None = None,
         tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[ChatCompletionChunk]:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
+    ) -> StreamEvents:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
-            images=images,
-            tape=tape,
             messages=messages,
+            tape=tape,
             context=context,
             tools=tools,
         )
-
-        def _handle(response: Any, _provider_name: str, _model_id: str, _attempt: int) -> Any:
-            return response
-
-        return await self._run_async(
+        return self._execute_sync(
             prepared,
+            tools_payload=prepared.toolset.payload or None,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
             stream=True,
-            reasoning_effort=reasoning_effort,
+            tool_count=len(prepared.toolset.payload or []),
             kwargs=kwargs,
-            on_response=_handle,
+            on_response=lambda response, provider_name, model_id, attempt: self._build_event_stream(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._event_error_result(prepared, error),
         )
 
-    async def atool_calls(
+    async def stream_events_async(
         self,
         prompt: str | None = None,
         *,
@@ -1301,238 +1097,489 @@ class ChatClient:
         provider: str | None = None,
         messages: list[MessageInput] | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tape: str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
-        prepared = self._prepare_request(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            images=images,
-            tape=tape,
-            messages=messages,
-            tools=tools,
-            require_tools=True,
-        )
-
-        def _handle(response: Any, _provider_name: str, _model_id: str, _attempt: int) -> Any:
-            return self._extract_tool_calls(response)
-
-        return await self._run_async(
-            prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
-        )
-
-    async def atools_auto(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        self._reject_tape_kwarg(kwargs)
-        return await self._atools_auto(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    async def _atools_auto(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
         tape: str | None = None,
         context: TapeContext | None = None,
         tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> Any:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
+    ) -> AsyncStreamEvents:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
-            images=images,
-            tape=tape,
             messages=messages,
+            tape=tape,
             context=context,
             tools=tools,
-            require_tools=True,
-            require_runnable=True,
+        )
+        return await self._execute_async(
+            prepared,
+            tools_payload=prepared.toolset.payload or None,
+            model=model,
+            provider=provider,
+            max_tokens=max_tokens,
+            stream=True,
+            tool_count=len(prepared.toolset.payload or []),
+            kwargs=kwargs,
+            on_response=lambda response, provider_name, model_id, attempt: self._build_async_event_stream(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+                attempt,
+            ),
+            on_error=lambda error: self._event_async_error_result(prepared, error),
         )
 
-        def _handle(response: Any, provider_name: str, model_id: str, attempt: int) -> Any:
+    def _build_text_stream(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> TextStream:
+        if hasattr(response, "choices"):
+            text = self._extract_text(response)
             tool_calls = self._extract_tool_calls(response)
-            if tool_calls:
-                result = self._tool_executor.execute(tool_calls, tools=prepared.toolset.runnable)
-                if result is not None and prepared.should_update:
-                    result_text = self._stringify_tool_result(result)
-                    self._update_tape(
-                        prepared,
-                        result_text,
-                        tool_calls=tool_calls,
-                        tool_result=result_text,
-                    )
-                return result if result is not None else ""
-            return self._text_or_retry(
-                response,
+            state = StreamState()
+            self._finalize_text_stream(
+                prepared,
+                text=text or None,
+                tool_calls=tool_calls,
+                state=state,
                 provider_name=provider_name,
                 model_id=model_id,
                 attempt=attempt,
-                prepared=prepared,
+                usage=self._extract_usage(response),
+                response=response,
+                log_empty=False,
+            )
+            return TextStream(iter([text]) if text else self._empty_iterator(), state=state)
+
+        state = StreamState()
+        parts: list[str] = []
+        assembler = ToolCallAssembler()
+
+        usage: dict[str, Any] | None = None
+
+        def _iterator() -> Iterator[str]:
+            nonlocal usage
+            try:
+                for chunk in response:
+                    deltas = self._extract_chunk_tool_call_deltas(chunk)
+                    if deltas:
+                        assembler.add_deltas(deltas)
+                    text = self._extract_chunk_text(chunk)
+                    if text:
+                        parts.append(text)
+                        yield text
+                    usage = self._extract_usage(chunk) or usage
+            except Exception as exc:
+                kind = self._core.classify_exception(exc)
+                wrapped = self._core.wrap_error(exc, kind, provider_name, model_id)
+                state.error = ErrorPayload(wrapped.kind, wrapped.message)
+            finally:
+                tool_calls = assembler.finalize()
+                self._finalize_text_stream(
+                    prepared,
+                    text="".join(parts) if parts else None,
+                    tool_calls=tool_calls,
+                    state=state,
+                    provider_name=provider_name,
+                    model_id=model_id,
+                    attempt=attempt,
+                    usage=usage,
+                    log_empty=True,
+                )
+
+        return TextStream(_iterator(), state=state)
+
+    def _build_async_text_stream(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> AsyncTextStream:
+        if hasattr(response, "choices"):
+            text = self._extract_text(response)
+            tool_calls = self._extract_tool_calls(response)
+            state = StreamState()
+            self._finalize_text_stream(
+                prepared,
+                text=text or None,
+                tool_calls=tool_calls,
+                state=state,
+                provider_name=provider_name,
+                model_id=model_id,
+                attempt=attempt,
+                usage=self._extract_usage(response),
+                response=response,
+                log_empty=False,
             )
 
-        return await self._run_async(
-            prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
-        )
+            async def _single() -> AsyncIterator[str]:
+                if text:
+                    yield text
 
-    async def atools_auto_stream(
+            return AsyncTextStream(_single(), state=state)
+
+        state = StreamState()
+        parts: list[str] = []
+        usage: dict[str, Any] | None = None
+        assembler = ToolCallAssembler()
+
+        async def _iterator() -> AsyncIterator[str]:
+            nonlocal usage
+            try:
+                async for chunk in response:
+                    deltas = self._extract_chunk_tool_call_deltas(chunk)
+                    if deltas:
+                        assembler.add_deltas(deltas)
+                    text = self._extract_chunk_text(chunk)
+                    if text:
+                        parts.append(text)
+                        yield text
+                    usage = self._extract_usage(chunk) or usage
+            except Exception as exc:
+                kind = self._core.classify_exception(exc)
+                wrapped = self._core.wrap_error(exc, kind, provider_name, model_id)
+                state.error = ErrorPayload(wrapped.kind, wrapped.message)
+            finally:
+                tool_calls = assembler.finalize()
+                self._finalize_text_stream(
+                    prepared,
+                    text="".join(parts) if parts else None,
+                    tool_calls=tool_calls,
+                    state=state,
+                    provider_name=provider_name,
+                    model_id=model_id,
+                    attempt=attempt,
+                    usage=usage,
+                    log_empty=True,
+                )
+
+        return AsyncTextStream(_iterator(), state=state)
+
+    @staticmethod
+    def _chunk_has_tool_calls(chunk: Any) -> bool:
+        return bool(ChatClient._extract_chunk_tool_call_deltas(chunk))
+
+    @staticmethod
+    def _extract_chunk_tool_call_deltas(chunk: Any) -> list[Any]:
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            return []
+        delta = getattr(choices[0], "delta", None)
+        if delta is None:
+            return []
+        return getattr(delta, "tool_calls", None) or []
+
+    @staticmethod
+    def _extract_chunk_text(chunk: Any) -> str:
+        choices = getattr(chunk, "choices", None)
+        if not choices:
+            return ""
+        delta = getattr(choices[0], "delta", None)
+        if delta is None:
+            return ""
+        return getattr(delta, "content", "") or ""
+
+    def _build_event_stream(
         self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[str]:
-        self._reject_tape_kwarg(kwargs)
-        return await self._atools_auto_stream(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            images=images,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    async def _atools_auto_stream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[MessageInput] | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tape: str | None = None,
-        context: TapeContext | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[str]:
-        self._reject_reserved_kwargs(kwargs, "stream", "auto_call_tools", "full_response")
-        prepared = self._prepare_request(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            images=images,
-            tape=tape,
-            messages=messages,
-            context=context,
-            tools=tools,
-            require_tools=True,
-            require_runnable=True,
-        )
-
-        def _handle(response: Any, provider_name: str, model_id: str, _attempt: int) -> Any:
-            return self._stream_text_with_tools_async(
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> StreamEvents:
+        if hasattr(response, "choices"):
+            return self._build_event_stream_from_response(
+                prepared,
                 response,
-                prepared=prepared,
-                tools=prepared.toolset.runnable,
+                provider_name,
+                model_id,
+            )
+
+        state = StreamState()
+        usage: dict[str, Any] | None = None
+        parts: list[str] = []
+        tool_calls: list[dict[str, Any]] | None = None
+        tool_results: list[Any] = []
+        assembler = ToolCallAssembler()
+
+        def _iterator() -> Iterator[StreamEvent]:
+            nonlocal usage, tool_calls, tool_results
+            try:
+                for chunk in response:
+                    usage = self._extract_usage(chunk) or usage
+                    assembler.add_deltas(self._extract_chunk_tool_call_deltas(chunk))
+                    text = self._extract_chunk_text(chunk)
+                    if text:
+                        parts.append(text)
+                        yield StreamEvent("text", {"delta": text})
+
+                tool_calls = assembler.finalize()
+                events, tool_results = self._finalize_event_stream(
+                    prepared,
+                    parts=parts,
+                    tool_calls=tool_calls,
+                    state=state,
+                    provider_name=provider_name,
+                    model_id=model_id,
+                    attempt=attempt,
+                    usage=usage,
+                )
+                yield from events
+            except Exception as exc:
+                kind = self._core.classify_exception(exc)
+                wrapped = self._core.wrap_error(exc, kind, provider_name, model_id)
+                state.error = ErrorPayload(wrapped.kind, wrapped.message)
+                final_calls = tool_calls or assembler.finalize()
+                yield from self._error_event_sequence(
+                    parts=parts,
+                    tool_calls=final_calls,
+                    tool_results=tool_results,
+                    usage=usage,
+                    error=state.error,
+                )
+            finally:
+                tool_calls = self._finalize_event_stream_state(
+                    prepared,
+                    parts=parts,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    state=state,
+                    provider_name=provider_name,
+                    model_id=model_id,
+                    usage=usage,
+                    assembler=assembler,
+                )
+
+        return StreamEvents(_iterator(), state=state)
+
+    def _build_async_event_stream(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> AsyncStreamEvents:
+        if hasattr(response, "choices"):
+            return self._build_async_event_stream_from_response(
+                prepared,
+                response,
+                provider_name,
+                model_id,
+            )
+
+        state = StreamState()
+        usage: dict[str, Any] | None = None
+        parts: list[str] = []
+        tool_calls: list[dict[str, Any]] | None = None
+        tool_results: list[Any] = []
+        assembler = ToolCallAssembler()
+
+        async def _iterator() -> AsyncIterator[StreamEvent]:
+            nonlocal usage, tool_calls, tool_results
+            try:
+                async for chunk in response:
+                    usage = self._extract_usage(chunk) or usage
+                    assembler.add_deltas(self._extract_chunk_tool_call_deltas(chunk))
+                    text = self._extract_chunk_text(chunk)
+                    if text:
+                        parts.append(text)
+                        yield StreamEvent("text", {"delta": text})
+
+                tool_calls = assembler.finalize()
+                events, tool_results = self._finalize_event_stream(
+                    prepared,
+                    parts=parts,
+                    tool_calls=tool_calls,
+                    state=state,
+                    provider_name=provider_name,
+                    model_id=model_id,
+                    attempt=attempt,
+                    usage=usage,
+                )
+                for event in events:
+                    yield event
+            except Exception as exc:
+                kind = self._core.classify_exception(exc)
+                wrapped = self._core.wrap_error(exc, kind, provider_name, model_id)
+                state.error = ErrorPayload(wrapped.kind, wrapped.message)
+                final_calls = tool_calls or assembler.finalize()
+                for event in self._error_event_sequence(
+                    parts=parts,
+                    tool_calls=final_calls,
+                    tool_results=tool_results,
+                    usage=usage,
+                    error=state.error,
+                ):
+                    yield event
+            finally:
+                tool_calls = self._finalize_event_stream_state(
+                    prepared,
+                    parts=parts,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    state=state,
+                    provider_name=provider_name,
+                    model_id=model_id,
+                    usage=usage,
+                    assembler=assembler,
+                )
+
+        return AsyncStreamEvents(_iterator(), state=state)
+
+    def _build_event_stream_from_response(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+    ) -> StreamEvents:
+        text = self._extract_text(response)
+        tool_calls = self._extract_tool_calls(response)
+        usage = self._extract_usage(response)
+        tool_results, tool_error = self._execute_tool_calls(prepared, tool_calls, provider_name, model_id)
+        if not text and not tool_calls and tool_error is None:
+            empty = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
+            self._core.log_error(empty, provider_name, model_id, 0)
+            tool_error = ErrorPayload(empty.kind, empty.message)
+        state = StreamState(error=tool_error, usage=usage)
+        events: list[StreamEvent] = []
+        if text:
+            events.append(StreamEvent("text", {"delta": text}))
+        for idx, call in enumerate(tool_calls):
+            events.append(StreamEvent("tool_call", {"index": idx, "call": call}))
+        for idx, result in enumerate(tool_results):
+            events.append(StreamEvent("tool_result", {"index": idx, "result": result}))
+        if tool_error is not None:
+            events.append(StreamEvent("error", tool_error.as_dict()))
+        if usage is not None:
+            events.append(StreamEvent("usage", usage))
+        events.append(
+            StreamEvent(
+                "final",
+                self._final_event_data(
+                    text=text or None,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    usage=usage,
+                    error=tool_error,
+                ),
+            )
+        )
+        if prepared.should_update:
+            self._update_tape(
+                prepared,
+                text or None,
+                tool_calls=tool_calls or None,
+                tool_results=tool_results or None,
+                error=tool_error,
+                response=response,
                 provider=provider_name,
                 model=model_id,
+                usage=usage,
             )
+        return StreamEvents(iter(events), state=state)
 
-        return await self._run_async(
+    def _build_async_event_stream_from_response(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+    ) -> AsyncStreamEvents:
+        sync_events = self._build_event_stream_from_response(
             prepared,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            reasoning_effort=reasoning_effort,
-            kwargs=kwargs,
-            on_response=_handle,
+            response,
+            provider_name,
+            model_id,
         )
 
-    def _reset_tape(self, name: str) -> None:
-        self._tape_store.reset(name)
+        async def _iterator() -> AsyncIterator[StreamEvent]:
+            for event in sync_events:
+                yield event
 
-    def _list_tapes(self) -> list[str]:
-        return self._tape_store.list_tapes()
+        return AsyncStreamEvents(_iterator(), state=StreamState(error=sync_events.error, usage=sync_events.usage))
 
-    def _query_tape(self, name: str) -> TapeQuery:
-        return TapeQuery(name, self._tape_store)
-
-    def _read_entries(self, name: str) -> list[TapeEntry]:
-        return self._tape_store.read(name) or []
-
-    def _append_entry(self, name: str, entry: TapeEntry) -> None:
-        self._tape_store.append(name, entry)
-
-    def _set_default_context(self, context: TapeContext) -> None:
-        self._default_context = context
-
-    def _handoff(
+    def _execute_tool_calls(
         self,
-        tape: str,
-        name: str,
-        *,
-        state: dict[str, Any] | None = None,
-        **meta: Any,
-    ) -> list[TapeEntry]:
-        if self._handoff_policy is not None:
-            allowed = self._handoff_policy.allow(tape=tape, name=name, state=state, meta=meta)
-            if not allowed:
-                return []
-        handler = self._handoff_handler
-        if handler is None:
-            entries = [TapeEntry.anchor(name, state=state, **meta)]
-        else:
-            entries = handler.build_entries(tape, name, state, meta)
-        for entry in entries:
-            self._tape_store.append(tape, entry)
-        return entries
+        prepared: PreparedChat,
+        tool_calls: list[dict[str, Any]],
+        provider_name: str,
+        model_id: str,
+    ) -> tuple[list[Any], ErrorPayload | None]:
+        if not tool_calls:
+            return [], None
+        if not prepared.toolset.runnable:
+            return [], ErrorPayload(ErrorKind.TOOL, "No runnable tools are available.")
+        tool_context = ToolContext(
+            tape=prepared.tape,
+            run_id=prepared.run_id,
+            meta={"provider": provider_name, "model": model_id},
+            state={},
+        )
+        execution = self._tool_executor.execute(
+            tool_calls,
+            tools=prepared.toolset.runnable,
+            context=tool_context,
+        )
+        return execution.tool_results, execution.error
+
+    @staticmethod
+    def _extract_text(response: Any) -> str:
+        if isinstance(response, str):
+            return response
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return ""
+        message = getattr(choices[0], "message", None)
+        if message is None:
+            return ""
+        return getattr(message, "content", "") or ""
+
+    @staticmethod
+    def _extract_tool_calls(response: Any) -> list[dict[str, Any]]:
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return []
+        message = getattr(choices[0], "message", None)
+        if message is None:
+            return []
+        tool_calls = getattr(message, "tool_calls", None) or []
+        calls: list[dict[str, Any]] = []
+        for tool_call in tool_calls:
+            entry: dict[str, Any] = {
+                "function": {
+                    "name": tool_call.function.name,
+                    "arguments": tool_call.function.arguments,
+                }
+            }
+            call_id = getattr(tool_call, "id", None)
+            if call_id:
+                entry["id"] = call_id
+            call_type = getattr(tool_call, "type", None)
+            if call_type:
+                entry["type"] = call_type
+            calls.append(entry)
+        return calls
+
+    @staticmethod
+    def _extract_usage(response: Any) -> dict[str, Any] | None:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return None
+        if hasattr(usage, "model_dump"):
+            return usage.model_dump()
+        if isinstance(usage, dict):
+            return dict(usage)
+        data: dict[str, Any] = {}
+        for field in ("input_tokens", "output_tokens", "total_tokens", "requests"):
+            value = getattr(usage, field, None)
+            if value is not None:
+                data[field] = value
+        return data or None

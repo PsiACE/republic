@@ -1,13 +1,30 @@
-"""Core primitives for Republic."""
+"""Core utilities for Republic."""
 
 from republic.core.errors import ErrorKind, RepublicError
-from republic.core.execution import LLMCore
-from republic.core.telemetry import instrument_republic, span
+from republic.core.results import (
+    AsyncStreamEvents,
+    AsyncTextStream,
+    ErrorPayload,
+    StreamEvent,
+    StreamEvents,
+    StreamState,
+    StructuredOutput,
+    TextStream,
+    ToolAutoResult,
+    ToolExecution,
+)
 
 __all__ = [
+    "AsyncStreamEvents",
+    "AsyncTextStream",
     "ErrorKind",
-    "LLMCore",
+    "ErrorPayload",
     "RepublicError",
-    "instrument_republic",
-    "span",
+    "StreamEvent",
+    "StreamEvents",
+    "StreamState",
+    "StructuredOutput",
+    "TextStream",
+    "ToolAutoResult",
+    "ToolExecution",
 ]

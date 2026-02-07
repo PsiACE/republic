@@ -5,7 +5,7 @@ from __future__ import annotations
 import builtins
 from typing import Protocol
 
-from .entries import TapeEntry
+from republic.tape.entries import TapeEntry
 
 
 class TapeStore(Protocol):

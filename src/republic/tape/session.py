@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Iterator, Sequence
 from typing import TYPE_CHECKING, Any
 
-from any_llm.types.completion import ChatCompletion, ChatCompletionChunk, ReasoningEffort
-
-from republic.tape.context import TapeContext
+from republic.core.results import AsyncTextStream, StructuredOutput, TextStream, ToolAutoResult
+from republic.tape.context import ContextSelection, TapeContext
 from republic.tape.entries import TapeEntry
-from republic.tape.query import TapeQuery
-from republic.tools.schema import ToolInput
+from republic.tape.query import QueryResult, TapeQuery
 
 if TYPE_CHECKING:
     from republic.clients.chat import ChatClient
@@ -33,7 +30,7 @@ class Tape:
     def __repr__(self) -> str:
         return f"<Tape name={self._name}>"
 
-    def __call__(self, prompt: str | None = None, **kwargs: Any) -> str:
+    def __call__(self, prompt: str | None = None, **kwargs: Any) -> StructuredOutput:
         return self.create(prompt, **kwargs)
 
     @property
@@ -42,29 +39,29 @@ class Tape:
 
     @property
     def context(self) -> TapeContext:
-        return self._context_override or self._chat._default_context
+        return self._context_override or self._chat.default_context
 
     @context.setter
     def context(self, value: TapeContext | None) -> None:
         self._context_override = value
 
     def entries(self) -> list[TapeEntry]:
-        return self._chat._read_entries(self._name)
+        return self._chat.read_entries(self._name)
 
-    def messages(self) -> list[dict[str, Any]]:
-        return self._chat._read_messages(self._name, context=self._context_override)
+    def messages(self) -> ContextSelection:
+        return self._chat.read_messages(self._name, context=self._context_override)
 
     def append(self, entry: TapeEntry) -> None:
-        self._chat._append_entry(self._name, entry)
+        self._chat.append_entry(self._name, entry)
 
     def query(self) -> TapeQuery:
-        return self._chat._query_tape(self._name)
+        return self._chat.query_tape(self._name)
 
     def reset(self) -> None:
-        self._chat._reset_tape(self._name)
+        self._chat.reset_tape(self._name)
 
     def handoff(self, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
-        return self._chat._handoff(self._name, name, state=state, **meta)
+        return self._chat.handoff(self._name, name, state=state, **meta)
 
     def create(
         self,
@@ -74,25 +71,21 @@ class Tape:
         model: str | None = None,
         provider: str | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> StructuredOutput:
         context = self._context_override
-        return self._chat._create(
+        return self._chat.create(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
-            images=images,
             tape=self._name,
             context=context,
-            reasoning_effort=reasoning_effort,
             **kwargs,
         )
 
-    def stream(
+    async def create_async(
         self,
         prompt: str | None = None,
         *,
@@ -100,105 +93,17 @@ class Tape:
         model: str | None = None,
         provider: str | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> Iterator[str]:
+    ) -> StructuredOutput:
         context = self._context_override
-        return self._chat._stream(
+        return await self._chat.create_async(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
-            images=images,
             tape=self._name,
             context=context,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> ChatCompletion:
-        context = self._context_override
-        return self._chat._raw(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            images=images,
-            tape=self._name,
-            context=context,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def stream_raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> Iterator[ChatCompletionChunk]:
-        context = self._context_override
-        return self._chat._stream_raw(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            images=images,
-            tape=self._name,
-            context=context,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    def tool_calls(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        context = self._context_override
-        return self._chat._tool_calls(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            images=images,
-            tape=self._name,
-            context=context,
-            tools=tools,
-            reasoning_effort=reasoning_effort,
             **kwargs,
         )
 
@@ -210,27 +115,23 @@ class Tape:
         model: str | None = None,
         provider: str | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
+        tools: Any = None,
         **kwargs: Any,
-    ) -> Any:
+    ) -> ToolAutoResult:
         context = self._context_override
-        return self._chat._tools_auto(
+        return self._chat.tools_auto(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
-            images=images,
             tape=self._name,
             context=context,
             tools=tools,
-            reasoning_effort=reasoning_effort,
             **kwargs,
         )
 
-    def tools_auto_stream(
+    async def tools_auto_async(
         self,
         prompt: str | None = None,
         *,
@@ -238,27 +139,23 @@ class Tape:
         model: str | None = None,
         provider: str | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
+        tools: Any = None,
         **kwargs: Any,
-    ) -> Iterator[str]:
+    ) -> ToolAutoResult:
         context = self._context_override
-        return self._chat._tools_auto_stream(
+        return await self._chat.tools_auto_async(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
-            images=images,
             tape=self._name,
             context=context,
             tools=tools,
-            reasoning_effort=reasoning_effort,
             **kwargs,
         )
 
-    async def acreate(
+    def tool_calls(
         self,
         prompt: str | None = None,
         *,
@@ -266,79 +163,23 @@ class Tape:
         model: str | None = None,
         provider: str | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
+        tools: Any = None,
         **kwargs: Any,
-    ) -> str:
+    ) -> StructuredOutput:
         context = self._context_override
-        return await self._chat._acreate(
+        return self._chat.tool_calls(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
-            images=images,
-            tape=self._name,
-            context=context,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    async def astream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[str]:
-        context = self._context_override
-        return await self._chat._astream(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            images=images,
-            tape=self._name,
-            context=context,
-            reasoning_effort=reasoning_effort,
-            **kwargs,
-        )
-
-    async def astream_raw(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
-        **kwargs: Any,
-    ) -> AsyncIterator[ChatCompletionChunk]:
-        context = self._context_override
-        return await self._chat._astream_raw(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            images=images,
             tape=self._name,
             context=context,
             tools=tools,
-            reasoning_effort=reasoning_effort,
             **kwargs,
         )
 
-    async def atools_auto(
+    async def tool_calls_async(
         self,
         prompt: str | None = None,
         *,
@@ -346,27 +187,23 @@ class Tape:
         model: str | None = None,
         provider: str | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
+        tools: Any = None,
         **kwargs: Any,
-    ) -> Any:
+    ) -> StructuredOutput:
         context = self._context_override
-        return await self._chat._atools_auto(
+        return await self._chat.tool_calls_async(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
-            images=images,
             tape=self._name,
             context=context,
             tools=tools,
-            reasoning_effort=reasoning_effort,
             **kwargs,
         )
 
-    async def atools_auto_stream(
+    def stream(
         self,
         prompt: str | None = None,
         *,
@@ -374,22 +211,89 @@ class Tape:
         model: str | None = None,
         provider: str | None = None,
         max_tokens: int | None = None,
-        images: Sequence[str] | str | None = None,
-        tools: ToolInput = None,
-        reasoning_effort: ReasoningEffort | None = None,
         **kwargs: Any,
-    ) -> AsyncIterator[str]:
+    ) -> TextStream:
         context = self._context_override
-        return await self._chat._atools_auto_stream(
+        return self._chat.stream(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
             provider=provider,
             max_tokens=max_tokens,
-            images=images,
+            tape=self._name,
+            context=context,
+            **kwargs,
+        )
+
+    async def stream_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> AsyncTextStream:
+        context = self._context_override
+        return await self._chat.stream_async(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            max_tokens=max_tokens,
+            tape=self._name,
+            context=context,
+            **kwargs,
+        )
+
+    def stream_events(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        max_tokens: int | None = None,
+        tools: Any = None,
+        **kwargs: Any,
+    ):
+        context = self._context_override
+        return self._chat.stream_events(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            max_tokens=max_tokens,
             tape=self._name,
             context=context,
             tools=tools,
-            reasoning_effort=reasoning_effort,
             **kwargs,
         )
+
+    async def stream_events_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        max_tokens: int | None = None,
+        tools: Any = None,
+        **kwargs: Any,
+    ):
+        context = self._context_override
+        return await self._chat.stream_events_async(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            max_tokens=max_tokens,
+            tape=self._name,
+            context=context,
+            tools=tools,
+            **kwargs,
+        )
+
+    def results(self) -> QueryResult:
+        return self.query().all()
