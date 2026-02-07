@@ -1,7 +1,7 @@
 site_name: republic
 repo_url: https://github.com/psiace/republic
 site_url: https://getrepublic.org
-site_description: The minimalistic AI stack for developers who value freedom and efficiency.
+site_description: Minimal, tape-first LLM client with structured outputs.
 site_author: Chojan Shang
 edit_uri: edit/main/docs/
 repo_name: psiace/republic
@@ -9,20 +9,16 @@ copyright: Maintained by <a href="https://psiace.com">psiace</a>.
 
 nav:
   - Home: index.md
-  - Quick Start: getting-started.md
+  - Getting Started: getting-started.md
   - Concepts:
       - Tape: concepts/tape.md
       - Context: concepts/context.md
   - Guides:
-      - Chat: guides/chat.md
       - Tools: guides/tools.md
-      - Responses: guides/responses.md
-      - Batch: guides/batch.md
-  - Operations:
-      - Error Handling: operations/errors.md
-      - Observability: operations/observability.md
-  - Reference:
-      - API Reference: reference/api.md
+      - Text: guides/text.md
+      - Streaming: guides/streaming.md
+      - Embeddings: guides/embeddings.md
+  - Design: design.md
 plugins:
   - search
   - mkdocstrings:

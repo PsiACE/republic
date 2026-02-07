@@ -1,80 +1,42 @@
 # Tools
 
-Tools let you describe functions and optionally run them.
+Tools are Python callables or Pydantic models that the model can invoke. Use a tool-capable model for best results.
 
-Tool calling requires a tool-capable model. The `openrouter/free` router may return models that do not support
-tool calling, so use a fixed model for the examples below.
-
-## Define a Tool
+Example prerequisite: set `LLM_API_KEY` in your environment.
 
 ```python
-from republic import LLM, tool
+from __future__ import annotations
+
+import os
+
+from pydantic import BaseModel
+
+from republic import LLM, schema_from_model, tool
+
+api_key = os.getenv("LLM_API_KEY")
+if not api_key:
+    raise RuntimeError("Set LLM_API_KEY before running this example.")
+
+tool_model = os.getenv("REPUBLIC_TOOL_MODEL", "openrouter:openai/gpt-4o-mini")
+llm = LLM(model=tool_model, api_key=api_key)
+
+tape = llm.tape("tools")
 
 @tool
-def get_weather(location: str) -> str:
-    """Get the weather for a location."""
-    return f"Weather in {location} is sunny"
+def get_weather(city: str) -> str:
+    return f"weather({city})"
 
-llm = LLM(model="openai:gpt-4o-mini", api_key="<OPENAI_API_KEY>")
+result = tape.tools_auto("Call get_weather for Paris.", tools=[get_weather], max_tokens=32)
+print(result.kind)
+print(result.tool_results)
+
+class WeatherRequest(BaseModel):
+    city: str
+
+schema = schema_from_model(WeatherRequest)
+print(schema["function"]["name"])
 ```
 
-## Manual Tool Execution
+## Tool Context
 
-```python
-tool_calls = llm.chat.tool_calls("What's the weather in Tokyo?", tools=[get_weather])
-result = llm.tools.execute(tool_calls, tools=[get_weather])
-print(result)
-```
-
-Single tool results return the raw value; multiple results return a JSON string list.
-
-## Automatic Tool Execution
-
-Automatic tool execution requires a tool-capable model. The `openrouter/free` router may return models that do not
-support tool calling, so prefer a fixed model for production tools.
-
-```python
-result = llm.chat.tools_auto("What's the weather in Tokyo?", tools=[get_weather])
-print(result)
-```
-
-## Tools with Tape
-
-```python
-tape = llm.tape("notes")
-result = tape.tools_auto("What's the weather in Tokyo?", tools=[get_weather])
-print(result)
-```
-
-## Typed Tools and Schemas
-
-Note: Schema-only and runnable tools must use distinct `name` values to avoid conflicts.
-
-```python
-from pydantic import BaseModel
-from republic import ToolSet, schema_from_model, tool_from_model
-
-class WeatherSchema(BaseModel):
-    """Weather request."""
-
-    location: str
-
-tool_schema = schema_from_model(WeatherSchema, name="weather_schema")
-
-def handle_weather(payload: WeatherSchema) -> str:
-    return f"Weather in {payload.location} is sunny"
-
-typed_tool = tool_from_model(WeatherSchema, handle_weather, name="weather_tool")
-
-toolset = ToolSet.from_tools([tool_schema, typed_tool])
-print(toolset.payload)
-```
-
-`Tool.from_model` provides a default runnable tool that validates and returns `model_dump()`.
-
-```python
-from republic import Tool
-
-tool = Tool.from_model(WeatherSchema)
-print(tool.run(location="Tokyo"))
-```
+If a tool needs extra metadata, declare `context=True` and accept a `ToolContext` argument. Republic will pass run metadata and a mutable state dictionary.

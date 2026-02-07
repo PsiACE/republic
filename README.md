@@ -1,78 +1,47 @@
-# republic
+# Republic
 
-[![Release](https://img.shields.io/github/v/release/psiace/republic)](https://img.shields.io/github/v/release/psiace/republic)
-[![Build status](https://img.shields.io/github/actions/workflow/status/psiace/republic/main.yml?branch=main)](https://github.com/psiace/republic/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/psiace/republic/branch/main/graph/badge.svg)](https://codecov.io/gh/psiace/republic)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/psiace/republic)](https://img.shields.io/github/commit-activity/m/psiace/republic)
-[![License](https://img.shields.io/github/license/psiace/republic)](https://img.shields.io/github/license/psiace/republic)
+Republic is a minimal, tape-first LLM client built on any-llm. It makes every message, tool call, error, and run detail explicit, so you can audit and replay safely.
 
-An explicit LLM client and router with append-only history and controllable context.
+## Highlights
 
-Republic has one state primitive: a tape. A tape is an append-only log of messages and anchors.
-You decide what goes into context, where a phase starts, and how handoff works. No hidden memory.
+- Tape is the single source of truth for every run.
+- Structured outputs by default with explicit error handling.
+- Small API surface and predictable behavior.
 
-The idea is inspired by punch tape: a linear, immutable record you can slice into deterministic context windows.
-It keeps the system simple, auditable, and easy to hand off between humans and agents.
+## Quickstart (60 seconds)
 
-Visit https://getrepublic.org for concepts, guides, and API reference.
-
-- One entry point (`LLM`) with predictable behavior
-- Tape-first state with explicit anchors and selection
-- Provider-agnostic routing, retries, and fallbacks
-- Typed tools with optional execution
-- Streaming-first ergonomics
-- Clear extension points for storage and observability
-
-We like LitAI's pragmatic feel. Republic is derived from it, and we hope you like it too.
-
-This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai).
-
-## Requirements
-
-- Python 3.11+
-
-## Installation
-
-```bash
-pip install republic
-# Or, with uv
-uv add republic
-```
-
-## Quick Start
+Example prerequisite: set `LLM_API_KEY` in your environment.
 
 ```python
+from __future__ import annotations
+
 import os
 
 from republic import LLM
 
-llm = LLM(
-    model="openrouter:openrouter/free",
-    api_key=os.environ["LLM_API_KEY"],
-    client_args={
-        "default_headers": {
-            "HTTP-Referer": "https://getrepublic.org",
-            "X-Title": "republic docs",
-        }
-    },
-)
+api_key = os.getenv("LLM_API_KEY")
+if not api_key:
+    raise RuntimeError("Set LLM_API_KEY before running this example.")
 
-print(llm.chat("Give me a one-sentence overview of Republic."))
-
-notes = llm.tape("notes")
-print(notes("Remember this for later."))
-print(notes.messages())
-
-for chunk in llm.chat.stream("Write a 5-word line about light."):
-    print(chunk, end="")
+llm = LLM(model="openrouter:openrouter/free", api_key=api_key)
+result = llm.chat.create("Say hello in one short sentence.", max_tokens=32)
+print(result.value)
+print(result.error)
 ```
 
-Tool calling requires a tool-capable model. See the docs for tool examples and model guidance.
+## Concepts
+
+- Tape records prompts, messages, tool calls, tool results, errors, and run metadata.
+- Context selects which tape entries become prompt messages.
+- Tools expose Python callables or Pydantic models to the model.
 
 ## Development
 
-See `CONTRIBUTING.md` for local setup, testing, and release guidance.
+```bash
+make check
+make test
+```
 
 ## License
 
-Apache 2.0
+Apache-2.0

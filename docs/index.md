@@ -1,44 +1,35 @@
-# republic
+# Republic
 
-Republic is an explicit LLM client and router with append-only history and controllable context.
+Republic is a minimal, tape-first LLM client built on any-llm. Tape captures every message, tool call, error, and run detail so you can audit, replay, and debug with confidence.
 
-It gives you one state primitive: a tape. A tape is an append-only log of messages and anchors.
-You decide what goes into context and where a phase starts. No hidden memory.
+## What It Solves
 
-The mental model comes from punch tape: a linear record that you can slice into deterministic context windows.
-That makes handoff and audit simple while keeping the API small.
+- You want a single append-only record of model behavior.
+- You prefer structured outputs and explicit error handling.
+- You want a small, predictable API instead of a large framework.
 
-We like LitAI's pragmatic feel. Republic is derived from it, and we hope you like it too.
+## Quick Start
 
-## Getting Started
+Example prerequisite: set `LLM_API_KEY` in your environment.
 
-Start here: [Getting Started](getting-started.md)
+```python
+from __future__ import annotations
 
-## Core Idea
+import os
 
-Tape makes state explicit. You choose the slice, not the framework.
+from republic import LLM
 
-## Concepts
+api_key = os.getenv("LLM_API_KEY")
+if not api_key:
+    raise RuntimeError("Set LLM_API_KEY before running this example.")
 
-- [Tape](concepts/tape.md)
-- [Context](concepts/context.md)
+llm = LLM(model="openrouter:openrouter/free", api_key=api_key)
+result = llm.chat.create("Give me one short sentence.", max_tokens=32)
+print(result.value)
+```
 
-## Guides
+## Recommended Path
 
-- [Chat](guides/chat.md)
-- [Tools](guides/tools.md)
-- [Responses](guides/responses.md)
-- [Batch](guides/batch.md)
-
-## Operations
-
-- [Error Handling](operations/errors.md)
-- [Observability](operations/observability.md)
-
-## Reference
-
-- [API Reference](reference/api.md)
-
----
-
-> This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai); we hope you like it too.
+1. Start with Getting Started for the full walkthrough.
+2. Read Tape and Context to understand how prompts are built.
+3. Use Tools, Text, Streaming, and Embeddings guides as needed.
