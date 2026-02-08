@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from republic import LLM, tool
 from republic.core.errors import ErrorKind
 
@@ -114,6 +116,39 @@ def test_stream_events_carries_text_tools_usage_and_final(fake_anyllm) -> None:
     assert tool_result.data["result"] == "TOKYO"
     assert stream.error is None
     assert stream.usage == {"total_tokens": 12}
+
+
+def test_stream_events_merges_tool_deltas_without_id_or_index(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openai")
+    client.queue_completion(
+        iter([
+            make_chunk(tool_calls=[make_tool_call("echo", '{"text":"to', call_id="call_1")]),
+            make_chunk(
+                tool_calls=[
+                    SimpleNamespace(
+                        type="function",
+                        function=SimpleNamespace(name="", arguments='kyo"}'),
+                    )
+                ],
+                usage={"total_tokens": 9},
+            ),
+        ])
+    )
+
+    llm = LLM(model="openai:gpt-4o-mini", api_key="dummy")
+    stream = llm.stream_events("Call echo for tokyo", tools=[echo])
+    events = list(stream)
+
+    tool_calls = [event for event in events if event.kind == "tool_call"]
+    assert len(tool_calls) == 1
+    assert tool_calls[0].data["call"]["function"]["name"] == "echo"
+    assert tool_calls[0].data["call"]["function"]["arguments"] == '{"text":"tokyo"}'
+
+    tool_results = [event for event in events if event.kind == "tool_result"]
+    assert len(tool_results) == 1
+    assert tool_results[0].data["result"] == "TOKYO"
+    assert stream.error is None
+    assert stream.usage == {"total_tokens": 9}
 
 
 def test_text_shortcuts_and_embeddings_share_the_same_facade(fake_anyllm) -> None:

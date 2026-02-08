@@ -47,14 +47,101 @@ class ToolCallAssembler:
     def __init__(self) -> None:
         self._calls: dict[object, dict[str, Any]] = {}
         self._order: list[object] = []
+        self._index_to_key: dict[Any, object] = {}
+
+    def _replace_key(self, old_key: object, new_key: object) -> None:
+        entry = self._calls.pop(old_key)
+        self._calls[new_key] = entry
+        self._order[self._order.index(old_key)] = new_key
+        for index, key in list(self._index_to_key.items()):
+            if key == old_key:
+                self._index_to_key[index] = new_key
+
+    def _key_at_position(self, position: int) -> object | None:
+        if position < len(self._order):
+            return self._order[position]
+        return None
+
+    def _resolve_key_by_id(self, call_id: str, index: Any, position: int) -> object:
+        id_key: object = ("id", call_id)
+        if id_key in self._calls:
+            if index is not None:
+                self._index_to_key[index] = id_key
+            return id_key
+
+        mapped_key = self._index_to_key.get(index) if index is not None else None
+        if mapped_key is not None and mapped_key in self._calls and mapped_key != id_key:
+            self._replace_key(mapped_key, id_key)
+            self._index_to_key[index] = id_key
+            return id_key
+
+        if index is not None:
+            index_key: object = ("index", index)
+            if index_key in self._calls:
+                self._replace_key(index_key, id_key)
+                self._index_to_key[index] = id_key
+                return id_key
+
+        position_key = self._key_at_position(position)
+        if position_key is not None and position_key in self._calls:
+            self._replace_key(position_key, id_key)
+            if index is not None:
+                self._index_to_key[index] = id_key
+            return id_key
+        if index is not None:
+            self._index_to_key[index] = id_key
+        return id_key
+
+    def _resolve_key_by_index(self, tool_call: Any, index: Any, position: int) -> object:
+        mapped_key = self._index_to_key.get(index)
+        if mapped_key is not None and mapped_key in self._calls:
+            return mapped_key
+
+        index_key: object = ("index", index)
+        if index_key in self._calls:
+            self._index_to_key[index] = index_key
+            return index_key
+
+        position_key = self._key_at_position(position)
+        func = getattr(tool_call, "function", None)
+        tool_name = getattr(func, "name", None) if func is not None else None
+
+        if (tool_name is None or tool_name == "") and position_key is not None and position_key in self._calls:
+            self._index_to_key[index] = position_key
+            return position_key
+
+        if (
+            position_key is not None
+            and position_key in self._calls
+            and isinstance(position_key, tuple)
+            and position_key[0] == "position"
+        ):
+            self._replace_key(position_key, index_key)
+            self._index_to_key[index] = index_key
+            return index_key
+        self._index_to_key[index] = index_key
+        return index_key
+
+    def _resolve_key(self, tool_call: Any, position: int) -> object:
+        call_id = getattr(tool_call, "id", None)
+        index = getattr(tool_call, "index", None)
+
+        if call_id is not None:
+            return self._resolve_key_by_id(call_id, index, position)
+
+        if index is not None:
+            return self._resolve_key_by_index(tool_call, index, position)
+
+        # Some providers omit id/index for follow-up tool-call deltas.
+        # Merge by positional order so argument fragments are not split into fake calls.
+        position_key = self._key_at_position(position)
+        if position_key is not None:
+            return position_key
+        return ("position", position)
 
     def add_deltas(self, tool_calls: list[Any]) -> None:
-        for tool_call in tool_calls:
-            key = getattr(tool_call, "id", None)
-            if key is None:
-                key = getattr(tool_call, "index", None)
-            if key is None:
-                key = len(self._order)
+        for position, tool_call in enumerate(tool_calls):
+            key = self._resolve_key(tool_call, position)
             if key not in self._calls:
                 self._order.append(key)
                 self._calls[key] = {"function": {"name": "", "arguments": ""}}
