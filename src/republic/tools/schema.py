@@ -6,11 +6,12 @@ import inspect
 import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any, NoReturn, TypeVar, cast
+from typing import Any, NoReturn, ParamSpec, TypeVar, cast, overload
 
 from pydantic import BaseModel, TypeAdapter, validate_call
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
+P = ParamSpec("P")
 
 
 def _to_snake_case(name: str) -> str:
@@ -302,13 +303,33 @@ def normalize_tools(tools: ToolInput) -> ToolSet:
     return ToolSet(schemas, runnable_tools)
 
 
+@overload
+def tool(
+    func: Callable[P, Any],
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    context: bool = False,
+) -> Tool: ...
+
+
+@overload
+def tool(
+    func: None = None,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    context: bool = False,
+) -> Callable[[Callable[P, Any]], Tool]: ...
+
+
 def tool(
     func: Callable[..., Any] | None = None,
     *,
     name: str | None = None,
     description: str | None = None,
     context: bool = False,
-) -> Tool | Callable[..., Any]:
+) -> Tool | Callable[[Callable[..., Any]], Tool]:
     """Decorator to convert a function into a Tool instance."""
 
     def _create_tool(f: Callable[..., Any]) -> Tool:

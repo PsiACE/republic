@@ -717,7 +717,7 @@ class ChatClient:
         self._core.log_error(empty_error, provider_name, model_id, attempt)
         return self._core.RETRY
 
-    def create(
+    def chat(
         self,
         prompt: str | None = None,
         *,
@@ -799,7 +799,7 @@ class ChatClient:
             on_error=lambda error: self._structured_error_result(prepared, error),
         )
 
-    def tools_auto(
+    def run_tools(
         self,
         prompt: str | None = None,
         *,
@@ -842,7 +842,7 @@ class ChatClient:
             on_error=lambda error: self._tool_auto_error_result(prepared, error),
         )
 
-    async def create_async(
+    async def chat_async(
         self,
         prompt: str | None = None,
         *,
@@ -924,7 +924,7 @@ class ChatClient:
             on_error=lambda error: self._structured_error_result(prepared, error),
         )
 
-    async def tools_auto_async(
+    async def run_tools_async(
         self,
         prompt: str | None = None,
         *,

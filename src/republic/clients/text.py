@@ -10,10 +10,11 @@ from pydantic import BaseModel, ValidationError
 
 from republic.core.errors import ErrorKind
 from republic.core.results import ErrorPayload, StructuredOutput
+from republic.tape.context import TapeContext
 from republic.tools.schema import schema_from_model
 
 
-class _IfDecision(BaseModel):
+class _DecisionOutput(BaseModel):
     value: bool
 
 
@@ -70,30 +71,51 @@ class TextClient:
         normalized = [choice.strip() for choice in choices]
         return normalized, None
 
-    def if_(self, input_text: str, question: str) -> StructuredOutput:
+    def if_(
+        self,
+        input_text: str,
+        question: str,
+        *,
+        tape: str | None = None,
+        context: TapeContext | None = None,
+    ) -> StructuredOutput:
         prompt = self._build_if_prompt(input_text, question)
-        tool_schema = schema_from_model(_IfDecision, name="if_decision", description="Return a boolean decision.")
-        response = self._chat.tool_calls(prompt=prompt, tools=[tool_schema])
+        tool_schema = schema_from_model(_DecisionOutput, name="if_decision", description="Return a boolean.")
+        response = self._chat.tool_calls(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
         if response.error is not None:
             return StructuredOutput(None, response.error)
-        return self._parse_tool_call(response.value, _IfDecision, field="value")
+        return self._parse_tool_call(response.value, _DecisionOutput, field="value")
 
-    async def if_async(self, input_text: str, question: str) -> StructuredOutput:
+    async def if_async(
+        self,
+        input_text: str,
+        question: str,
+        *,
+        tape: str | None = None,
+        context: TapeContext | None = None,
+    ) -> StructuredOutput:
         prompt = self._build_if_prompt(input_text, question)
-        tool_schema = schema_from_model(_IfDecision, name="if_decision", description="Return a boolean decision.")
-        response = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema])
+        tool_schema = schema_from_model(_DecisionOutput, name="if_decision", description="Return a boolean.")
+        response = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
         if response.error is not None:
             return StructuredOutput(None, response.error)
-        return self._parse_tool_call(response.value, _IfDecision, field="value")
+        return self._parse_tool_call(response.value, _DecisionOutput, field="value")
 
-    def classify(self, input_text: str, choices: list[str]) -> StructuredOutput:
+    def classify(
+        self,
+        input_text: str,
+        choices: list[str],
+        *,
+        tape: str | None = None,
+        context: TapeContext | None = None,
+    ) -> StructuredOutput:
         normalized, error = self._normalize_choices(choices)
         if error is not None:
             return StructuredOutput(None, error)
         choices_str = ", ".join(normalized)
         prompt = self._build_classify_prompt(input_text, choices_str)
         tool_schema = schema_from_model(_ClassifyDecision, name="classify_decision", description="Return one label.")
-        response = self._chat.tool_calls(prompt=prompt, tools=[tool_schema])
+        response = self._chat.tool_calls(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
         if response.error is not None:
             return StructuredOutput(None, response.error)
 
@@ -112,14 +134,21 @@ class TextClient:
             )
         return StructuredOutput(label, None)
 
-    async def classify_async(self, input_text: str, choices: list[str]) -> StructuredOutput:
+    async def classify_async(
+        self,
+        input_text: str,
+        choices: list[str],
+        *,
+        tape: str | None = None,
+        context: TapeContext | None = None,
+    ) -> StructuredOutput:
         normalized, error = self._normalize_choices(choices)
         if error is not None:
             return StructuredOutput(None, error)
         choices_str = ", ".join(normalized)
         prompt = self._build_classify_prompt(input_text, choices_str)
         tool_schema = schema_from_model(_ClassifyDecision, name="classify_decision", description="Return one label.")
-        response = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema])
+        response = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
         if response.error is not None:
             return StructuredOutput(None, response.error)
 
