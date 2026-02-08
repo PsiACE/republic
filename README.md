@@ -1,16 +1,22 @@
 # Republic
 
-Republic is a minimal, tape-first LLM client built on any-llm. It makes every message, tool call, error, and run detail explicit, so you can audit and replay safely.
+[![Release](https://img.shields.io/github/v/release/psiace/republic)](https://img.shields.io/github/v/release/psiace/republic)
+[![Build status](https://img.shields.io/github/actions/workflow/status/psiace/republic/main.yml?branch=main)](https://github.com/psiace/republic/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/psiace/republic/branch/main/graph/badge.svg)](https://codecov.io/gh/psiace/republic)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/psiace/republic)](https://img.shields.io/github/commit-activity/m/psiace/republic)
+[![License](https://img.shields.io/github/license/psiace/republic)](https://img.shields.io/github/license/psiace/republic)
 
-## Highlights
+Build LLM workflows like normal Python while keeping a full audit trail by default.
 
-- Tape is the single source of truth for every run.
-- Structured outputs by default with explicit error handling.
-- Small API surface and predictable behavior.
+> Visit https://getrepublic.org for concepts, guides, and API reference.
 
-## Quickstart (60 seconds)
+Republic is a **tape-first** LLM client: messages, tool calls, tool results, errors, and usage are all recorded as structured data. You can make the workflow explicit first, then decide where intelligence should be added.
 
-Example prerequisite: set `LLM_API_KEY` in your environment.
+## Quick Start
+
+```bash
+pip install republic
+```
 
 ```python
 from __future__ import annotations
@@ -24,16 +30,21 @@ if not api_key:
     raise RuntimeError("Set LLM_API_KEY before running this example.")
 
 llm = LLM(model="openrouter:openrouter/free", api_key=api_key)
-result = llm.chat.create("Say hello in one short sentence.", max_tokens=32)
-print(result.value)
-print(result.error)
+result = llm.chat("Describe Republic in one sentence.", max_tokens=48)
+
+if result.error:
+    print(result.error.kind, result.error.message)
+else:
+    print(result.value)
 ```
 
-## Concepts
+## Why It Feels Natural
 
-- Tape records prompts, messages, tool calls, tool results, errors, and run metadata.
-- Context selects which tape entries become prompt messages.
-- Tools expose Python callables or Pydantic models to the model.
+- **Plain Python**: The main flow is regular functions and branches, no extra DSL.
+- **Structured Result**: Core interfaces return `StructuredOutput`, with stable `ErrorKind` values.
+- **Tools without magic**: Supports both automatic and manual tool execution with clear debugging and auditing.
+- **Tape-first memory**: Use anchor/handoff to bound context windows and replay full evidence.
+- **Event streaming**: Subscribe to text deltas, tool calls, tool results, usage, and final state.
 
 ## Development
 
@@ -42,6 +53,12 @@ make check
 make test
 ```
 
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local setup, testing, and release guidance.
+
 ## License
 
-Apache-2.0
+[Apache 2.0](./LICENSE)
+
+---
+
+> This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai) and inspired by [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai); we hope you like them too.

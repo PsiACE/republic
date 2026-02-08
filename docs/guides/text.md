@@ -1,32 +1,32 @@
-# Text Helpers
+# Text Decisions
 
-Text helpers wrap tool calls to provide structured boolean and classification outputs. Use a tool-capable model for reliable behavior.
+`if_` and `classify` are useful when you want model decisions in a clear structured form.
 
-Example prerequisite: set `LLM_API_KEY` in your environment.
+## if_
 
 ```python
-from __future__ import annotations
-
-import os
-
 from republic import LLM
 
-api_key = os.getenv("LLM_API_KEY")
-if not api_key:
-    raise RuntimeError("Set LLM_API_KEY before running this example.")
+llm = LLM(model="openrouter:openai/gpt-4o-mini", api_key="<API_KEY>")
+decision = llm.if_("The release is blocked by a migration failure.", "Should we page on-call now?")
 
-tool_model = os.getenv("REPUBLIC_TOOL_MODEL", "openrouter:openai/gpt-4o-mini")
-llm = LLM(model=tool_model, api_key=api_key)
-
-decision = llm.if_("ship it", "Is this positive?")
-print(decision.value)
+print(decision.value)  # bool | None
 print(decision.error)
+```
 
-label = llm.classify("urgent outage", ["bug", "feature", "support"])
-print(label.value)
+## classify
+
+```python
+label = llm.classify(
+    "User asks for invoice and tax receipt.",
+    ["sales", "support", "finance"],
+)
+
+print(label.value)     # one of choices | None
 print(label.error)
 ```
 
-## Error Handling
+## Usage Tips
 
-Every helper returns a `StructuredOutput` with `value` and `error`. Check `error` when you need explicit control over failure modes.
+- Treat these as shortcut entry points for agentic `if` and classification.
+- Keep business logic in regular Python branches for testability and audits.

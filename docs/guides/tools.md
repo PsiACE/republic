@@ -1,42 +1,57 @@
 # Tools
 
-Tools are Python callables or Pydantic models that the model can invoke. Use a tool-capable model for best results.
+Tool workflows have two paths:
 
-Example prerequisite: set `LLM_API_KEY` in your environment.
+- Automatic execution: `llm.run_tools(...)`
+- Manual execution: `llm.tool_calls(...)` + `llm.tools.execute(...)`
+
+## Define a Tool
 
 ```python
-from __future__ import annotations
-
-import os
-
-from pydantic import BaseModel
-
-from republic import LLM, schema_from_model, tool
-
-api_key = os.getenv("LLM_API_KEY")
-if not api_key:
-    raise RuntimeError("Set LLM_API_KEY before running this example.")
-
-tool_model = os.getenv("REPUBLIC_TOOL_MODEL", "openrouter:openai/gpt-4o-mini")
-llm = LLM(model=tool_model, api_key=api_key)
-
-tape = llm.tape("tools")
+from republic import tool
 
 @tool
 def get_weather(city: str) -> str:
-    return f"weather({city})"
-
-result = tape.tools_auto("Call get_weather for Paris.", tools=[get_weather], max_tokens=32)
-print(result.kind)
-print(result.tool_results)
-
-class WeatherRequest(BaseModel):
-    city: str
-
-schema = schema_from_model(WeatherRequest)
-print(schema["function"]["name"])
+    return f"{city}: sunny"
 ```
 
-## Tool Context
+## Automatic Execution (Faster)
 
-If a tool needs extra metadata, declare `context=True` and accept a `ToolContext` argument. Republic will pass run metadata and a mutable state dictionary.
+```python
+from republic import LLM
+
+llm = LLM(model="openrouter:openai/gpt-4o-mini", api_key="<API_KEY>")
+out = llm.run_tools("What is weather in Tokyo?", tools=[get_weather])
+
+print(out.kind)         # text | tools | error
+print(out.tool_results)
+print(out.error)
+```
+
+## Manual Execution (More Control)
+
+```python
+calls = llm.tool_calls("Use get_weather for Berlin.", tools=[get_weather])
+if calls.error:
+    raise RuntimeError(calls.error.message)
+
+execution = llm.tools.execute(calls.value, tools=[get_weather])
+print(execution.tool_results)
+print(execution.error)
+```
+
+## Tools with Context
+
+When a tool needs tape/run metadata, declare `context=True`.
+
+```python
+from republic import ToolContext, tool
+
+@tool(context=True)
+def save_ticket(title: str, context: ToolContext) -> dict[str, str]:
+    return {
+        "title": title,
+        "run_id": context.run_id,
+        "tape": context.tape or "none",
+    }
+```

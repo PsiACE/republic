@@ -1,35 +1,35 @@
 # Republic
 
-Republic is a minimal, tape-first LLM client built on any-llm. Tape captures every message, tool call, error, and run detail so you can audit, replay, and debug with confidence.
+Use LLM capabilities like regular Python components, with auditable execution traces by default.
 
-## What It Solves
+Republic is not a bigger framework. It is a small set of composable primitives:
 
-- You want a single append-only record of model behavior.
-- You prefer structured outputs and explicit error handling.
-- You want a small, predictable API instead of a large framework.
+- `LLM`: One entry point for chat, tools, stream, and embeddings.
+- `StructuredOutput`: Key interfaces return `value + error`.
+- `Tape`: Append-only records with anchor/handoff/context/query.
+- `ToolExecutor`: Tool calls can be automatic or manual.
 
-## Quick Start
-
-Example prerequisite: set `LLM_API_KEY` in your environment.
+## 30-Second Preview
 
 ```python
-from __future__ import annotations
-
-import os
-
 from republic import LLM
 
-api_key = os.getenv("LLM_API_KEY")
-if not api_key:
-    raise RuntimeError("Set LLM_API_KEY before running this example.")
+llm = LLM(model="openrouter:openrouter/free", api_key="<API_KEY>")
+out = llm.chat("Explain tape-first in one sentence.", max_tokens=48)
 
-llm = LLM(model="openrouter:openrouter/free", api_key=api_key)
-result = llm.chat.create("Give me one short sentence.", max_tokens=32)
-print(result.value)
+if out.error:
+    print(out.error.kind, out.error.message)
+else:
+    print(out.value)
 ```
 
-## Recommended Path
+## What You Get
 
-1. Start with Getting Started for the full walkthrough.
-2. Read Tape and Context to understand how prompts are built.
-3. Use Tools, Text, Streaming, and Embeddings guides as needed.
+- Smaller API surface with stronger control.
+- Visible tool execution paths without hidden magic.
+- Run/tape-level behavior tracing for debugging and audits.
+- Both text streaming and event streaming for CLI, web, and workers.
+
+---
+
+> This project is derived from [lightning-ai/litai](https://github.com/lightning-ai/litai) and inspired by [pydantic/pydantic-ai](https://github.com/pydantic/pydantic-ai); we hope you like them too.

@@ -1,7 +1,7 @@
 [project]
 name = "republic"
 version = "0.3.0"
-description = "Minimal, tape-first LLM client with structured outputs."
+description = "Build LLM workflows like normal Python while keeping a full audit trail by default."
 authors = [{ name = "Chojan Shang", email = "psiace@apache.org" }]
 readme = "README.md"
 keywords = [
