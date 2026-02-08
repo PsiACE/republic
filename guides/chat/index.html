@@ -7,7 +7,7 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="generator" content="mkdocs-1.6.1, mkdocs-terminal-4.8.0">
     
-    <meta name="description" content="The minimalistic AI stack for developers who value freedom and efficiency."> 
+    <meta name="description" content="Tape-first LLM client with structured outputs."> 
     
     <meta name="author" content="Chojan Shang"> 
     
@@ -103,8 +103,8 @@
                 
                 
                 <li property="itemListElement" typeof="ListItem">
-                    <a href="../../getting-started/" class="menu-item " property="item" typeof="WebPage">
-                        <span property="name">Quick Start</span>
+                    <a href="../../quickstart/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Quickstart</span>
                     </a>
                     <meta property="position" content="1">
                 </li>
@@ -112,10 +112,12 @@
                 
                 
                 
-                
-                
-                
-                
+                <li property="itemListElement" typeof="ListItem">
+                    <a href="../../philosophy/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Philosophy</span>
+                    </a>
+                    <meta property="position" content="2">
+                </li>
                 
                     
                     
@@ -125,7 +127,7 @@
     <a href="#" class="menu-item" data-toggle="modal" data-target="#mkdocs_search_modal" property="item" typeof="SearchAction">
         <i aria-hidden="true" class="fa fa-search"></i> <span property="name">Search</span>
     </a>
-    <meta property="position" content="2">
+    <meta property="position" content="3">
 </li>
                     
             </ul>
@@ -157,62 +159,10 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../../getting-started/">Quick Start</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../quickstart/">Quickstart</a>
         
     
     
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Concepts</span>
-        
-    
-    
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/tape/">Tape</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/context/">Context</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
     
        </li>
         
@@ -264,7 +214,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../responses/">Responses</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../tape/">Tape</a>
         
     
     </li>
@@ -277,7 +227,33 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../batch/">Batch</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../stream-events/">Stream Events</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../text/">Text Decisions</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../embeddings/">Embeddings</a>
         
     
     </li>
@@ -290,92 +266,14 @@
         
           <li class="terminal-mkdocs-side-nav-li">
     
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Operations</span>
-        
     
     
         
         
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/errors/">Error Handling</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/observability/">Observability</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Reference</span>
+            <a class="terminal-mkdocs-side-nav-item" href="../../philosophy/">Philosophy</a>
         
     
     
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../reference/api/">API Reference</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
     
        </li>
         
@@ -384,57 +282,47 @@
 <nav>
     <ul>
         <li><a href="#chat">Chat</a></li>
-        <li><a href="#basic-chat">Basic Chat</a></li><li><a href="#streaming-chat">Streaming Chat</a></li><li><a href="#message-lists">Message Lists</a></li><li><a href="#raw-responses">Raw Responses</a></li><li><a href="#tape-history">Tape History</a></li>
+        <li><a href="#prompt-mode">Prompt Mode</a></li><li><a href="#messages-mode">Messages Mode</a></li><li><a href="#structured-error-handling">Structured Error Handling</a></li><li><a href="#retries-and-fallback">Retries and Fallback</a></li>
     </ul>
 </nav>
 </aside>
             <main id="terminal-mkdocs-main-content">
 <section id="mkdocs-terminal-content">
     <h1 id="chat">Chat<a class="headerlink" href="#chat" title="Permanent link">&para;</a></h1>
-<p>Chat gives you stateless requests. Tape gives you state.</p>
-<h2 id="basic-chat">Basic Chat<a class="headerlink" href="#basic-chat" title="Permanent link">&para;</a></h2>
-<p>Use <code>llm.chat</code> for stateless requests.</p>
+<p><code>llm.chat(...)</code> is the smallest entry point and fits most text-only workloads.</p>
+<h2 id="prompt-mode">Prompt Mode<a class="headerlink" href="#prompt-mode" title="Permanent link">&para;</a></h2>
 <pre><code class="language-python">from republic import LLM
 
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
-print(llm.chat.create(&quot;Tell me a story.&quot;))
+llm = LLM(model=&quot;openrouter:openrouter/free&quot;, api_key=&quot;&lt;API_KEY&gt;&quot;)
+out = llm.chat(&quot;Output exactly one word: ready&quot;, max_tokens=8)
+print(out.value, out.error)
 </code></pre>
-<h2 id="streaming-chat">Streaming Chat<a class="headerlink" href="#streaming-chat" title="Permanent link">&para;</a></h2>
-<pre><code class="language-python">from republic import LLM
-
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
-
-for chunk in llm.chat.stream(&quot;Write a haiku about light.&quot;):
-    print(chunk, end=&quot;&quot;)
-</code></pre>
-<h2 id="message-lists">Message Lists<a class="headerlink" href="#message-lists" title="Permanent link">&para;</a></h2>
+<h2 id="messages-mode">Messages Mode<a class="headerlink" href="#messages-mode" title="Permanent link">&para;</a></h2>
 <pre><code class="language-python">messages = [
-    {&quot;role&quot;: &quot;system&quot;, &quot;content&quot;: &quot;You are concise.&quot;},
-    {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Summarize this.&quot;},
+    {&quot;role&quot;: &quot;system&quot;, &quot;content&quot;: &quot;Be concise.&quot;},
+    {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Explain tape-first in one sentence.&quot;},
 ]
-print(llm.chat.create(messages=messages))
+out = llm.chat(messages=messages, max_tokens=48)
 </code></pre>
-<h2 id="raw-responses">Raw Responses<a class="headerlink" href="#raw-responses" title="Permanent link">&para;</a></h2>
-<pre><code class="language-python">from republic import LLM
+<h2 id="structured-error-handling">Structured Error Handling<a class="headerlink" href="#structured-error-handling" title="Permanent link">&para;</a></h2>
+<pre><code class="language-python">result = llm.chat(&quot;Write one sentence.&quot;)
+if result.error:
+    if result.error.kind == &quot;temporary&quot;:
+        print(&quot;retry later&quot;)
+    else:
+        print(&quot;fail fast:&quot;, result.error.message)
+</code></pre>
+<h2 id="retries-and-fallback">Retries and Fallback<a class="headerlink" href="#retries-and-fallback" title="Permanent link">&para;</a></h2>
+<pre><code class="language-python">llm = LLM(
+    model=&quot;openai:gpt-4o-mini&quot;,
+    fallback_models=[&quot;anthropic:claude-3-5-sonnet-latest&quot;],
+    max_retries=3,
+    api_key={&quot;openai&quot;: &quot;&lt;OPENAI_KEY&gt;&quot;, &quot;anthropic&quot;: &quot;&lt;ANTHROPIC_KEY&gt;&quot;},
+)
 
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
-raw = llm.chat.raw(&quot;Give me JSON.&quot;)
-print(raw)
+out = llm.chat(&quot;Give me one deployment checklist item.&quot;)
 </code></pre>
-<h2 id="tape-history">Tape History<a class="headerlink" href="#tape-history" title="Permanent link">&para;</a></h2>
-<p>Use <code>llm.tape(name)</code> for stateful chat.</p>
-<pre><code class="language-python">from republic import LLM
-
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
-tape = llm.tape(&quot;notes&quot;)
-tape(&quot;Remember this.&quot;)
-print(tape.messages())
-</code></pre>
-<p>Streaming with tape works the same way:</p>
-<pre><code class="language-python">for chunk in tape.stream(&quot;Write a 5-word line about light.&quot;):
-    print(chunk, end=&quot;&quot;)
-</code></pre>
-<p>For tape semantics and context selection, see <a href="../../concepts/tape/">Tape</a> and <a href="../../concepts/context/">Context</a>.</p>
+<p>Recommendation: keep <code>max_retries</code> small (for example 2-4), and pick fallback models that are slightly more stable while still meeting quality requirements.</p>
 </section>
 
             </main>

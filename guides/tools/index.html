@@ -7,7 +7,7 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="generator" content="mkdocs-1.6.1, mkdocs-terminal-4.8.0">
     
-    <meta name="description" content="The minimalistic AI stack for developers who value freedom and efficiency."> 
+    <meta name="description" content="Tape-first LLM client with structured outputs."> 
     
     <meta name="author" content="Chojan Shang"> 
     
@@ -103,8 +103,8 @@
                 
                 
                 <li property="itemListElement" typeof="ListItem">
-                    <a href="../../getting-started/" class="menu-item " property="item" typeof="WebPage">
-                        <span property="name">Quick Start</span>
+                    <a href="../../quickstart/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Quickstart</span>
                     </a>
                     <meta property="position" content="1">
                 </li>
@@ -112,10 +112,12 @@
                 
                 
                 
-                
-                
-                
-                
+                <li property="itemListElement" typeof="ListItem">
+                    <a href="../../philosophy/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Philosophy</span>
+                    </a>
+                    <meta property="position" content="2">
+                </li>
                 
                     
                     
@@ -125,7 +127,7 @@
     <a href="#" class="menu-item" data-toggle="modal" data-target="#mkdocs_search_modal" property="item" typeof="SearchAction">
         <i aria-hidden="true" class="fa fa-search"></i> <span property="name">Search</span>
     </a>
-    <meta property="position" content="2">
+    <meta property="position" content="3">
 </li>
                     
             </ul>
@@ -157,62 +159,10 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../../getting-started/">Quick Start</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../quickstart/">Quickstart</a>
         
     
     
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Concepts</span>
-        
-    
-    
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/tape/">Tape</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/context/">Context</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
     
        </li>
         
@@ -264,7 +214,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../responses/">Responses</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../tape/">Tape</a>
         
     
     </li>
@@ -277,7 +227,33 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../batch/">Batch</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../stream-events/">Stream Events</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../text/">Text Decisions</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../embeddings/">Embeddings</a>
         
     
     </li>
@@ -290,92 +266,14 @@
         
           <li class="terminal-mkdocs-side-nav-li">
     
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Operations</span>
-        
     
     
         
         
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/errors/">Error Handling</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/observability/">Observability</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Reference</span>
+            <a class="terminal-mkdocs-side-nav-item" href="../../philosophy/">Philosophy</a>
         
     
     
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../reference/api/">API Reference</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
     
        </li>
         
@@ -384,61 +282,55 @@
 <nav>
     <ul>
         <li><a href="#tools">Tools</a></li>
-        <li><a href="#define-a-tool">Define a Tool</a></li><li><a href="#manual-tool-execution">Manual Tool Execution</a></li><li><a href="#automatic-tool-execution">Automatic Tool Execution</a></li><li><a href="#tools-with-tape">Tools with Tape</a></li><li><a href="#typed-tools-and-schemas">Typed Tools and Schemas</a></li>
+        <li><a href="#define-a-tool">Define a Tool</a></li><li><a href="#automatic-execution-faster">Automatic Execution (Faster)</a></li><li><a href="#manual-execution-more-control">Manual Execution (More Control)</a></li><li><a href="#tools-with-context">Tools with Context</a></li>
     </ul>
 </nav>
 </aside>
             <main id="terminal-mkdocs-main-content">
 <section id="mkdocs-terminal-content">
     <h1 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h1>
-<p>Tools let you describe functions and optionally run them.</p>
-<p>Tool calling requires a tool-capable model. The <code>openrouter/free</code> router may return models that do not support
-tool calling, so use a fixed model for the examples below.</p>
+<p>Tool workflows have two paths:</p>
+<ul>
+<li>Automatic execution: <code>llm.run_tools(...)</code></li>
+<li>Manual execution: <code>llm.tool_calls(...)</code> + <code>llm.tools.execute(...)</code></li>
+</ul>
 <h2 id="define-a-tool">Define a Tool<a class="headerlink" href="#define-a-tool" title="Permanent link">&para;</a></h2>
-<pre><code class="language-python">from republic import LLM, tool
+<pre><code class="language-python">from republic import tool
 
 @tool
-def get_weather(location: str) -&gt; str:
-    &quot;&quot;&quot;Get the weather for a location.&quot;&quot;&quot;
-    return f&quot;Weather in {location} is sunny&quot;
-
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
+def get_weather(city: str) -&gt; str:
+    return f&quot;{city}: sunny&quot;
 </code></pre>
-<h2 id="manual-tool-execution">Manual Tool Execution<a class="headerlink" href="#manual-tool-execution" title="Permanent link">&para;</a></h2>
-<pre><code class="language-python">tool_calls = llm.chat.tool_calls(&quot;What's the weather in Tokyo?&quot;, tools=[get_weather])
-result = llm.tools.execute(tool_calls, tools=[get_weather])
-print(result)
+<h2 id="automatic-execution-faster">Automatic Execution (Faster)<a class="headerlink" href="#automatic-execution-faster" title="Permanent link">&para;</a></h2>
+<pre><code class="language-python">from republic import LLM
+
+llm = LLM(model=&quot;openrouter:openai/gpt-4o-mini&quot;, api_key=&quot;&lt;API_KEY&gt;&quot;)
+out = llm.run_tools(&quot;What is weather in Tokyo?&quot;, tools=[get_weather])
+
+print(out.kind)         # text | tools | error
+print(out.tool_results)
+print(out.error)
 </code></pre>
-<h2 id="automatic-tool-execution">Automatic Tool Execution<a class="headerlink" href="#automatic-tool-execution" title="Permanent link">&para;</a></h2>
-<p>Automatic tool execution requires a tool-capable model. The <code>openrouter/free</code> router may return models that do not
-support tool calling, so prefer a fixed model for production tools.</p>
-<pre><code class="language-python">result = llm.chat.tools_auto(&quot;What's the weather in Tokyo?&quot;, tools=[get_weather])
-print(result)
+<h2 id="manual-execution-more-control">Manual Execution (More Control)<a class="headerlink" href="#manual-execution-more-control" title="Permanent link">&para;</a></h2>
+<pre><code class="language-python">calls = llm.tool_calls(&quot;Use get_weather for Berlin.&quot;, tools=[get_weather])
+if calls.error:
+    raise RuntimeError(calls.error.message)
+
+execution = llm.tools.execute(calls.value, tools=[get_weather])
+print(execution.tool_results)
+print(execution.error)
 </code></pre>
-<h2 id="tools-with-tape">Tools with Tape<a class="headerlink" href="#tools-with-tape" title="Permanent link">&para;</a></h2>
-<pre><code class="language-python">tape = llm.tape(&quot;notes&quot;)
-result = tape.tools_auto(&quot;What's the weather in Tokyo?&quot;, tools=[get_weather])
-print(result)
-</code></pre>
-<h2 id="typed-tools-and-schemas">Typed Tools and Schemas<a class="headerlink" href="#typed-tools-and-schemas" title="Permanent link">&para;</a></h2>
-<p>Note: Schema-only and runnable tools must use distinct <code>name</code> values to avoid conflicts.</p>
-<pre><code class="language-python">from pydantic import BaseModel
-from republic import ToolSet, schema_from_model, tool_from_model
+<h2 id="tools-with-context">Tools with Context<a class="headerlink" href="#tools-with-context" title="Permanent link">&para;</a></h2>
+<p>When a tool needs tape/run metadata, declare <code>context=True</code>.</p>
+<pre><code class="language-python">from republic import ToolContext, tool
 
-class WeatherSchema(BaseModel):
-    &quot;&quot;&quot;Weather request.&quot;&quot;&quot;
-
-    location: str
-
-tool_schema = schema_from_model(WeatherSchema, name=&quot;weather_schema&quot;)
-
-def handle_weather(payload: WeatherSchema) -&gt; str:
-    return f&quot;Weather in {payload.location} is sunny&quot;
-
-typed_tool = tool_from_model(WeatherSchema, handle_weather, name=&quot;weather_tool&quot;)
-
-toolset = ToolSet.from_tools([tool_schema, typed_tool])
-print(toolset.payload)
+@tool(context=True)
+def save_ticket(title: str, context: ToolContext) -&gt; dict[str, str]:
+    return {
+        &quot;title&quot;: title,
+        &quot;run_id&quot;: context.run_id,
+        &quot;tape&quot;: context.tape or &quot;none&quot;,
+    }
 </code></pre>
 </section>
 

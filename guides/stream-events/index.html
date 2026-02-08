@@ -7,11 +7,11 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="generator" content="mkdocs-1.6.1, mkdocs-terminal-4.8.0">
     
-    <meta name="description" content="The minimalistic AI stack for developers who value freedom and efficiency."> 
+    <meta name="description" content="Tape-first LLM client with structured outputs."> 
     
     <meta name="author" content="Chojan Shang"> 
     
-    <link rel="canonical" href="https://getrepublic.org/concepts/tape/"><link rel="icon" type="image/png" sizes="192x192" href="../../img/android-chrome-192x192.png" />
+    <link rel="canonical" href="https://getrepublic.org/guides/stream-events/"><link rel="icon" type="image/png" sizes="192x192" href="../../img/android-chrome-192x192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="../../img/android-chrome-512x512.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="../../img/apple-touch-icon.png" />
 <link rel="shortcut icon" type="image/png" sizes="48x48" href="../../img/favicon.ico" />
@@ -21,7 +21,7 @@
 
     
  
-<title>Tape - republic</title>
+<title>Stream Events - republic</title>
 
 
 <link href="../../css/fontawesome/css/fontawesome.min.css" rel="stylesheet">
@@ -103,8 +103,8 @@
                 
                 
                 <li property="itemListElement" typeof="ListItem">
-                    <a href="../../getting-started/" class="menu-item " property="item" typeof="WebPage">
-                        <span property="name">Quick Start</span>
+                    <a href="../../quickstart/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Quickstart</span>
                     </a>
                     <meta property="position" content="1">
                 </li>
@@ -112,10 +112,12 @@
                 
                 
                 
-                
-                
-                
-                
+                <li property="itemListElement" typeof="ListItem">
+                    <a href="../../philosophy/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Philosophy</span>
+                    </a>
+                    <meta property="position" content="2">
+                </li>
                 
                     
                     
@@ -125,7 +127,7 @@
     <a href="#" class="menu-item" data-toggle="modal" data-target="#mkdocs_search_modal" property="item" typeof="SearchAction">
         <i aria-hidden="true" class="fa fa-search"></i> <span property="name">Search</span>
     </a>
-    <meta property="position" content="2">
+    <meta property="position" content="3">
 </li>
                     
             </ul>
@@ -157,7 +159,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../../getting-started/">Quick Start</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../quickstart/">Quickstart</a>
         
     
     
@@ -174,7 +176,7 @@
         
         <span class="
         
-    terminal-mkdocs-side-nav-item--active terminal-mkdocs-side-nav-section-no-index">Concepts</span>
+    terminal-mkdocs-side-nav-item--active terminal-mkdocs-side-nav-section-no-index">Guides</span>
     
     
         
@@ -187,7 +189,9 @@
                 <li class="terminal-mkdocs-side-nav-li-ul-li">
     
         
-        <span class="terminal-mkdocs-side-nav-item--active">Tape</span>
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../chat/">Chat</a>
+        
     
     </li>
             
@@ -199,7 +203,57 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../context/">Context</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../tools/">Tools</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../tape/">Tape</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        <span class="terminal-mkdocs-side-nav-item--active">Stream Events</span>
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../text/">Text Decisions</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../embeddings/">Embeddings</a>
         
     
     </li>
@@ -212,170 +266,14 @@
         
           <li class="terminal-mkdocs-side-nav-li">
     
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Guides</span>
-        
     
     
         
         
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/chat/">Chat</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/tools/">Tools</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/responses/">Responses</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/batch/">Batch</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Operations</span>
+            <a class="terminal-mkdocs-side-nav-item" href="../../philosophy/">Philosophy</a>
         
     
     
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/errors/">Error Handling</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/observability/">Observability</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Reference</span>
-        
-    
-    
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../reference/api/">API Reference</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
     
        </li>
         
@@ -383,77 +281,49 @@
 </nav><hr>
 <nav>
     <ul>
-        <li><a href="#tape">Tape</a></li>
-        <li><a href="#quick-start">Quick Start</a></li><li><a href="#entries-vs-messages">Entries vs Messages</a></li><li><a href="#anchors-and-handoff">Anchors and Handoff</a></li><li><a href="#stores">Stores</a></li><li><a href="#query">Query</a></li>
+        <li><a href="#stream-events">Stream Events</a></li>
+        <li><a href="#text-stream">Text Stream</a></li><li><a href="#event-stream">Event Stream</a></li>
     </ul>
 </nav>
 </aside>
             <main id="terminal-mkdocs-main-content">
 <section id="mkdocs-terminal-content">
-    <h1 id="tape">Tape<a class="headerlink" href="#tape" title="Permanent link">&para;</a></h1>
-<p>Tape is the core state model in Republic. It is an append-only log of entries. State is derived, not rewritten.</p>
-<p><code>llm.tape(name)</code> returns a stateful handle to a named tape.</p>
-<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+    <h1 id="stream-events">Stream Events<a class="headerlink" href="#stream-events" title="Permanent link">&para;</a></h1>
+<p>Republic provides two streaming modes:</p>
+<ul>
+<li><code>stream(...)</code>: text deltas only.</li>
+<li><code>stream_events(...)</code>: full events including text, tools, usage, and final.</li>
+</ul>
+<h2 id="text-stream">Text Stream<a class="headerlink" href="#text-stream" title="Permanent link">&para;</a></h2>
 <pre><code class="language-python">from republic import LLM
 
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;)
-tape = llm.tape(&quot;notes&quot;)
+llm = LLM(model=&quot;openrouter:openai/gpt-4o-mini&quot;, api_key=&quot;&lt;API_KEY&gt;&quot;)
+stream = llm.stream(&quot;Give me three words.&quot;)
+text = &quot;&quot;.join(chunk for chunk in stream)
 
-tape(&quot;Remember this.&quot;)
-print(tape.messages())
+print(text)
+print(stream.error)
+print(stream.usage)
 </code></pre>
-<p><code>messages()</code> returns the context-selected messages, not the raw entries.</p>
-<h2 id="entries-vs-messages">Entries vs Messages<a class="headerlink" href="#entries-vs-messages" title="Permanent link">&para;</a></h2>
-<p>Entries are facts. Messages are what gets fed back to the model.</p>
-<pre><code class="language-python">from republic import LLM, TapeEntry
+<h2 id="event-stream">Event Stream<a class="headerlink" href="#event-stream" title="Permanent link">&para;</a></h2>
+<pre><code class="language-python">events = llm.stream_events(
+    &quot;Plan deployment and call a tool if needed.&quot;,
+    tools=[],
+)
 
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;)
-tape = llm.tape(&quot;notes&quot;)
-
-tape.append(TapeEntry.message({&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;Hello&quot;}))
-print(tape.entries())
-print(tape.messages())
+for event in events:
+    if event.kind == &quot;text&quot;:
+        print(event.data[&quot;delta&quot;], end=&quot;&quot;)
+    elif event.kind == &quot;tool_call&quot;:
+        print(&quot;\ncall=&quot;, event.data)
+    elif event.kind == &quot;tool_result&quot;:
+        print(&quot;\nresult=&quot;, event.data)
+    elif event.kind == &quot;usage&quot;:
+        print(&quot;\nusage=&quot;, event.data)
+    elif event.kind == &quot;final&quot;:
+        print(&quot;\nfinal=&quot;, event.data)
 </code></pre>
-<h2 id="anchors-and-handoff">Anchors and Handoff<a class="headerlink" href="#anchors-and-handoff" title="Permanent link">&para;</a></h2>
-<p>Use anchors to mark phases and control context boundaries.</p>
-<pre><code class="language-python">from republic import LLM
-
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;)
-llm.tape(&quot;notes&quot;).handoff(&quot;handoff:v1&quot;, state={&quot;phase&quot;: &quot;summary&quot;})
-</code></pre>
-<h2 id="stores">Stores<a class="headerlink" href="#stores" title="Permanent link">&para;</a></h2>
-<p>Implement <code>list_tapes</code>, <code>read</code>, <code>append</code>, and <code>reset</code>.
-<code>read</code> should return a snapshot, and <code>append</code> must only add new entries.
-Use <code>reset</code> for local or test cleanup, not for rewriting history.</p>
-<pre><code class="language-python">from republic import LLM
-from republic.tape import InMemoryTapeStore
-
-store = InMemoryTapeStore()
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, tape_store=store)
-</code></pre>
-<pre><code class="language-python">llm.tapes()
-</code></pre>
-<h2 id="query">Query<a class="headerlink" href="#query" title="Permanent link">&para;</a></h2>
-<p>Use <code>TapeQuery</code> for lightweight, chainable selection.</p>
-<pre><code class="language-python">from republic import TapeEntry
-from republic.tape import InMemoryTapeStore, TapeQuery
-
-store = InMemoryTapeStore()
-store.append(&quot;notes&quot;, TapeEntry.message({&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;a&quot;}))
-store.append(&quot;notes&quot;, TapeEntry.anchor(&quot;start&quot;))
-store.append(&quot;notes&quot;, TapeEntry.message({&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: &quot;b&quot;}))
-store.append(&quot;notes&quot;, TapeEntry.anchor(&quot;end&quot;))
-
-entries = TapeQuery(&quot;notes&quot;, store).between_anchors(&quot;start&quot;, &quot;end&quot;).kinds(&quot;message&quot;).all()
-</code></pre>
-<p>With a tape handle:</p>
-<pre><code class="language-python">from republic import LLM
-
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;)
-tape = llm.tape(&quot;notes&quot;)
-entries = tape.query().after_anchor().kinds(&quot;message&quot;).all()
-</code></pre>
-<p>For context assembly, see <a href="../context/">Context</a>.</p>
+<p>The <code>final</code> event contains <code>text/tool_calls/tool_results/usage/ok</code>, which is a good fit for final UI state or audit persistence.</p>
 </section>
 
             </main>

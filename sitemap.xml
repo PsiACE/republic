@@ -2,46 +2,38 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://getrepublic.org/</loc>
-         <lastmod>2026-02-04</lastmod>
+         <lastmod>2026-02-08</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/getting-started/</loc>
-         <lastmod>2026-02-04</lastmod>
+         <loc>https://getrepublic.org/philosophy/</loc>
+         <lastmod>2026-02-08</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/concepts/context/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
-         <loc>https://getrepublic.org/concepts/tape/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
-         <loc>https://getrepublic.org/guides/batch/</loc>
-         <lastmod>2026-02-04</lastmod>
+         <loc>https://getrepublic.org/quickstart/</loc>
+         <lastmod>2026-02-08</lastmod>
     </url>
     <url>
          <loc>https://getrepublic.org/guides/chat/</loc>
-         <lastmod>2026-02-04</lastmod>
+         <lastmod>2026-02-08</lastmod>
     </url>
     <url>
-         <loc>https://getrepublic.org/guides/responses/</loc>
-         <lastmod>2026-02-04</lastmod>
+         <loc>https://getrepublic.org/guides/embeddings/</loc>
+         <lastmod>2026-02-08</lastmod>
+    </url>
+    <url>
+         <loc>https://getrepublic.org/guides/stream-events/</loc>
+         <lastmod>2026-02-08</lastmod>
+    </url>
+    <url>
+         <loc>https://getrepublic.org/guides/tape/</loc>
+         <lastmod>2026-02-08</lastmod>
+    </url>
+    <url>
+         <loc>https://getrepublic.org/guides/text/</loc>
+         <lastmod>2026-02-08</lastmod>
     </url>
     <url>
          <loc>https://getrepublic.org/guides/tools/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
-         <loc>https://getrepublic.org/operations/errors/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
-         <loc>https://getrepublic.org/operations/observability/</loc>
-         <lastmod>2026-02-04</lastmod>
-    </url>
-    <url>
-         <loc>https://getrepublic.org/reference/api/</loc>
-         <lastmod>2026-02-04</lastmod>
+         <lastmod>2026-02-08</lastmod>
     </url>
 </urlset>

@@ -7,11 +7,11 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="generator" content="mkdocs-1.6.1, mkdocs-terminal-4.8.0">
     
-    <meta name="description" content="The minimalistic AI stack for developers who value freedom and efficiency."> 
+    <meta name="description" content="Tape-first LLM client with structured outputs."> 
     
     <meta name="author" content="Chojan Shang"> 
     
-    <link rel="canonical" href="https://getrepublic.org/operations/errors/"><link rel="icon" type="image/png" sizes="192x192" href="../../img/android-chrome-192x192.png" />
+    <link rel="canonical" href="https://getrepublic.org/guides/tape/"><link rel="icon" type="image/png" sizes="192x192" href="../../img/android-chrome-192x192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="../../img/android-chrome-512x512.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="../../img/apple-touch-icon.png" />
 <link rel="shortcut icon" type="image/png" sizes="48x48" href="../../img/favicon.ico" />
@@ -21,7 +21,7 @@
 
     
  
-<title>Error Handling - republic</title>
+<title>Tape - republic</title>
 
 
 <link href="../../css/fontawesome/css/fontawesome.min.css" rel="stylesheet">
@@ -103,8 +103,8 @@
                 
                 
                 <li property="itemListElement" typeof="ListItem">
-                    <a href="../../getting-started/" class="menu-item " property="item" typeof="WebPage">
-                        <span property="name">Quick Start</span>
+                    <a href="../../quickstart/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Quickstart</span>
                     </a>
                     <meta property="position" content="1">
                 </li>
@@ -112,10 +112,12 @@
                 
                 
                 
-                
-                
-                
-                
+                <li property="itemListElement" typeof="ListItem">
+                    <a href="../../philosophy/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Philosophy</span>
+                    </a>
+                    <meta property="position" content="2">
+                </li>
                 
                     
                     
@@ -125,7 +127,7 @@
     <a href="#" class="menu-item" data-toggle="modal" data-target="#mkdocs_search_modal" property="item" typeof="SearchAction">
         <i aria-hidden="true" class="fa fa-search"></i> <span property="name">Search</span>
     </a>
-    <meta property="position" content="2">
+    <meta property="position" content="3">
 </li>
                     
             </ul>
@@ -157,140 +159,10 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../../getting-started/">Quick Start</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../quickstart/">Quickstart</a>
         
     
     
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Concepts</span>
-        
-    
-    
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/tape/">Tape</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/context/">Context</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Guides</span>
-        
-    
-    
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/chat/">Chat</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/tools/">Tools</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/responses/">Responses</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../guides/batch/">Batch</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
     
        </li>
         
@@ -304,7 +176,7 @@
         
         <span class="
         
-    terminal-mkdocs-side-nav-item--active terminal-mkdocs-side-nav-section-no-index">Operations</span>
+    terminal-mkdocs-side-nav-item--active terminal-mkdocs-side-nav-section-no-index">Guides</span>
     
     
         
@@ -317,7 +189,9 @@
                 <li class="terminal-mkdocs-side-nav-li-ul-li">
     
         
-        <span class="terminal-mkdocs-side-nav-item--active">Error Handling</span>
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../chat/">Chat</a>
+        
     
     </li>
             
@@ -329,7 +203,57 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../observability/">Observability</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../tools/">Tools</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        <span class="terminal-mkdocs-side-nav-item--active">Tape</span>
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../stream-events/">Stream Events</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../text/">Text Decisions</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../embeddings/">Embeddings</a>
         
     
     </li>
@@ -342,40 +266,14 @@
         
           <li class="terminal-mkdocs-side-nav-li">
     
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Reference</span>
-        
     
     
         
         
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../reference/api/">API Reference</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../philosophy/">Philosophy</a>
         
     
-    </li>
-            
-            
-    </ul>
-        
+    
     
        </li>
         
@@ -383,26 +281,47 @@
 </nav><hr>
 <nav>
     <ul>
-        <li><a href="#error-handling">Error Handling</a></li>
-        
+        <li><a href="#tape">Tape</a></li>
+        <li><a href="#core-actions">Core Actions</a></li><li><a href="#minimal-session">Minimal Session</a></li><li><a href="#anchor-based-context-slicing">Anchor-Based Context Slicing</a></li><li><a href="#conventions">Conventions</a></li>
     </ul>
 </nav>
 </aside>
             <main id="terminal-mkdocs-main-content">
 <section id="mkdocs-terminal-content">
-    <h1 id="error-handling">Error Handling<a class="headerlink" href="#error-handling" title="Permanent link">&para;</a></h1>
-<p>Errors are raised as <code>RepublicError</code> with a stable <code>ErrorKind</code>.</p>
-<p>You can override the default classification via <code>error_classifier</code>:</p>
+    <h1 id="tape">Tape<a class="headerlink" href="#tape" title="Permanent link">&para;</a></h1>
+<p>Tape is an append-only execution log and a context selector.</p>
+<h2 id="core-actions">Core Actions<a class="headerlink" href="#core-actions" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>handoff(name, state=...)</code>: Create a new task anchor.</li>
+<li><code>chat(...)</code>: Continue on the current tape and record the run.</li>
+<li><code>entries()</code>: Inspect full entries (message/tool/error/event).</li>
+<li><code>query()</code>: Run slice queries.</li>
+</ul>
+<h2 id="minimal-session">Minimal Session<a class="headerlink" href="#minimal-session" title="Permanent link">&para;</a></h2>
 <pre><code class="language-python">from republic import LLM
-from republic.core import ErrorKind
 
-def classify(exc: Exception):
-    if isinstance(exc, TimeoutError):
-        return ErrorKind.TEMPORARY
-    return None
+llm = LLM(model=&quot;openrouter:openrouter/free&quot;, api_key=&quot;&lt;API_KEY&gt;&quot;)
+tape = llm.tape(&quot;ops&quot;)
 
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, error_classifier=classify)
+tape.handoff(&quot;incident_42&quot;, state={&quot;owner&quot;: &quot;tier1&quot;})
+out = tape.chat(&quot;Connection pool is exhausted. Give triage steps.&quot;, max_tokens=96)
+
+print(out.value)
+print([entry.kind for entry in tape.read_entries()])
 </code></pre>
+<h2 id="anchor-based-context-slicing">Anchor-Based Context Slicing<a class="headerlink" href="#anchor-based-context-slicing" title="Permanent link">&para;</a></h2>
+<pre><code class="language-python">tape.handoff(&quot;incident_43&quot;)
+_ = tape.chat(&quot;This time the issue is cache penetration.&quot;)
+
+previous = tape.query().after_anchor(&quot;incident_42&quot;).all()
+print([entry.kind for entry in previous.entries])
+</code></pre>
+<h2 id="conventions">Conventions<a class="headerlink" href="#conventions" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Tape entries are append-only and never overwrite history.</li>
+<li>Query/Context depend on entry order, not external indexes.</li>
+<li>Errors are recorded as first-class entries for replay.</li>
+</ul>
 </section>
 
             </main>

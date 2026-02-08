@@ -7,11 +7,11 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <meta name="generator" content="mkdocs-1.6.1, mkdocs-terminal-4.8.0">
     
-    <meta name="description" content="The minimalistic AI stack for developers who value freedom and efficiency."> 
+    <meta name="description" content="Tape-first LLM client with structured outputs."> 
     
     <meta name="author" content="Chojan Shang"> 
     
-    <link rel="canonical" href="https://getrepublic.org/guides/batch/"><link rel="icon" type="image/png" sizes="192x192" href="../../img/android-chrome-192x192.png" />
+    <link rel="canonical" href="https://getrepublic.org/guides/text/"><link rel="icon" type="image/png" sizes="192x192" href="../../img/android-chrome-192x192.png" />
 <link rel="icon" type="image/png" sizes="512x512" href="../../img/android-chrome-512x512.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="../../img/apple-touch-icon.png" />
 <link rel="shortcut icon" type="image/png" sizes="48x48" href="../../img/favicon.ico" />
@@ -21,7 +21,7 @@
 
     
  
-<title>Batch - republic</title>
+<title>Text Decisions - republic</title>
 
 
 <link href="../../css/fontawesome/css/fontawesome.min.css" rel="stylesheet">
@@ -103,8 +103,8 @@
                 
                 
                 <li property="itemListElement" typeof="ListItem">
-                    <a href="../../getting-started/" class="menu-item " property="item" typeof="WebPage">
-                        <span property="name">Quick Start</span>
+                    <a href="../../quickstart/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Quickstart</span>
                     </a>
                     <meta property="position" content="1">
                 </li>
@@ -112,10 +112,12 @@
                 
                 
                 
-                
-                
-                
-                
+                <li property="itemListElement" typeof="ListItem">
+                    <a href="../../philosophy/" class="menu-item " property="item" typeof="WebPage">
+                        <span property="name">Philosophy</span>
+                    </a>
+                    <meta property="position" content="2">
+                </li>
                 
                     
                     
@@ -125,7 +127,7 @@
     <a href="#" class="menu-item" data-toggle="modal" data-target="#mkdocs_search_modal" property="item" typeof="SearchAction">
         <i aria-hidden="true" class="fa fa-search"></i> <span property="name">Search</span>
     </a>
-    <meta property="position" content="2">
+    <meta property="position" content="3">
 </li>
                     
             </ul>
@@ -157,62 +159,10 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../../getting-started/">Quick Start</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../quickstart/">Quickstart</a>
         
     
     
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Concepts</span>
-        
-    
-    
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/tape/">Tape</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../concepts/context/">Context</a>
-        
-    
-    </li>
-            
-            
-    </ul>
-        
     
        </li>
         
@@ -266,57 +216,7 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../responses/">Responses</a>
-        
-    
-    </li>
-            
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        <span class="terminal-mkdocs-side-nav-item--active">Batch</span>
-    
-    </li>
-            
-            
-    </ul>
-        
-    
-       </li>
-        
-          <li class="terminal-mkdocs-side-nav-li">
-    
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Operations</span>
-        
-    
-    
-        
-        
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/errors/">Error Handling</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../tape/">Tape</a>
         
     
     </li>
@@ -329,7 +229,31 @@
     
         
         
-            <a class="terminal-mkdocs-side-nav-item" href="../../operations/observability/">Observability</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../stream-events/">Stream Events</a>
+        
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        <span class="terminal-mkdocs-side-nav-item--active">Text Decisions</span>
+    
+    </li>
+            
+        
+            
+            
+             
+                <li class="terminal-mkdocs-side-nav-li-ul-li">
+    
+        
+        
+            <a class="terminal-mkdocs-side-nav-item" href="../embeddings/">Embeddings</a>
         
     
     </li>
@@ -342,40 +266,14 @@
         
           <li class="terminal-mkdocs-side-nav-li">
     
-        
-        
-        
-            
-    
-        
-        
-            
-            
-            <span class="
-        
-    terminal-mkdocs-side-nav-item terminal-mkdocs-side-nav-section-no-index">Reference</span>
-        
     
     
         
         
-            <ul class="terminal-mkdocs-side-nav-li-ul">
-        
-            
-            
-             
-                <li class="terminal-mkdocs-side-nav-li-ul-li">
-    
-        
-        
-            <a class="terminal-mkdocs-side-nav-item" href="../../reference/api/">API Reference</a>
+            <a class="terminal-mkdocs-side-nav-item" href="../../philosophy/">Philosophy</a>
         
     
-    </li>
-            
-            
-    </ul>
-        
+    
     
        </li>
         
@@ -383,25 +281,38 @@
 </nav><hr>
 <nav>
     <ul>
-        <li><a href="#batch">Batch</a></li>
-        
+        <li><a href="#text-decisions">Text Decisions</a></li>
+        <li><a href="#if_">if_</a></li><li><a href="#classify">classify</a></li><li><a href="#usage-tips">Usage Tips</a></li>
     </ul>
 </nav>
 </aside>
             <main id="terminal-mkdocs-main-content">
 <section id="mkdocs-terminal-content">
-    <h1 id="batch">Batch<a class="headerlink" href="#batch" title="Permanent link">&para;</a></h1>
-<p>Batch is for offline or large-volume requests. It depends on provider support.</p>
-<p>OpenRouter does not support batch operations. Use a provider that exposes batch endpoints (for example, OpenAI).</p>
+    <h1 id="text-decisions">Text Decisions<a class="headerlink" href="#text-decisions" title="Permanent link">&para;</a></h1>
+<p><code>if_</code> and <code>classify</code> are useful when you want model decisions in a clear structured form.</p>
+<h2 id="if_">if_<a class="headerlink" href="#if_" title="Permanent link">&para;</a></h2>
 <pre><code class="language-python">from republic import LLM
 
-llm = LLM(model=&quot;openai:gpt-4o-mini&quot;, api_key=&quot;&lt;OPENAI_API_KEY&gt;&quot;)
-job = llm.batch.create(
-    input_file_path=&quot;/tmp/requests.jsonl&quot;,
-    endpoint=&quot;/v1/chat/completions&quot;,
-)
-print(job)
+llm = LLM(model=&quot;openrouter:openai/gpt-4o-mini&quot;, api_key=&quot;&lt;API_KEY&gt;&quot;)
+decision = llm.if_(&quot;The release is blocked by a migration failure.&quot;, &quot;Should we page on-call now?&quot;)
+
+print(decision.value)  # bool | None
+print(decision.error)
 </code></pre>
+<h2 id="classify">classify<a class="headerlink" href="#classify" title="Permanent link">&para;</a></h2>
+<pre><code class="language-python">label = llm.classify(
+    &quot;User asks for invoice and tax receipt.&quot;,
+    [&quot;sales&quot;, &quot;support&quot;, &quot;finance&quot;],
+)
+
+print(label.value)     # one of choices | None
+print(label.error)
+</code></pre>
+<h2 id="usage-tips">Usage Tips<a class="headerlink" href="#usage-tips" title="Permanent link">&para;</a></h2>
+<ul>
+<li>Treat these as shortcut entry points for agentic <code>if</code> and classification.</li>
+<li>Keep business logic in regular Python branches for testability and audits.</li>
+</ul>
 </section>
 
             </main>
