@@ -49,6 +49,60 @@ def test_chat_uses_fallback_model(fake_anyllm) -> None:
     assert len(fallback.calls) == 1
 
 
+def test_chat_fallbacks_on_auth_error(fake_anyllm) -> None:
+    class FakeAuthError(Exception):
+        def __init__(self, message: str) -> None:
+            super().__init__(message)
+            self.status_code = 401
+
+    primary = fake_anyllm.ensure("openai")
+    fallback = fake_anyllm.ensure("openrouter")
+
+    primary.queue_completion(FakeAuthError("invalid api key"))
+    fallback.queue_completion(make_response(text="fallback ok"))
+
+    llm = LLM(
+        model="openai:gpt-4o-mini",
+        fallback_models=["openrouter:openrouter/free"],
+        max_retries=2,
+        api_key={"openai": "bad", "openrouter": "ok"},
+    )
+
+    out = llm.chat("Ping")
+
+    assert out.error is None
+    assert out.value == "fallback ok"
+    assert len(primary.calls) == 1
+    assert len(fallback.calls) == 1
+
+
+def test_chat_fallbacks_on_rate_limit_like_error(fake_anyllm) -> None:
+    class FakeRateLimitError(Exception):
+        def __init__(self, message: str) -> None:
+            super().__init__(message)
+            self.status_code = 429
+
+    primary = fake_anyllm.ensure("openai")
+    fallback = fake_anyllm.ensure("openrouter")
+
+    primary.queue_completion(FakeRateLimitError("too many requests"))
+    fallback.queue_completion(make_response(text="fallback ok"))
+
+    llm = LLM(
+        model="openai:gpt-4o-mini",
+        fallback_models=["openrouter:openrouter/free"],
+        max_retries=1,
+        api_key={"openai": "x", "openrouter": "y"},
+    )
+
+    out = llm.chat("Ping")
+
+    assert out.error is None
+    assert out.value == "fallback ok"
+    assert len(primary.calls) == 1
+    assert len(fallback.calls) == 1
+
+
 def test_tape_requires_anchor_then_records_full_run(fake_anyllm) -> None:
     client = fake_anyllm.ensure("openai")
     client.queue_completion(make_response(text="step one"), make_response(text="step two"))

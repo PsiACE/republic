@@ -5,7 +5,10 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+import re
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum, auto
 from typing import Any, NoReturn
 
 from any_llm import AnyLLM
@@ -19,12 +22,28 @@ from any_llm.exceptions import (
     ModelNotFoundError,
     ProviderError,
     RateLimitError,
+    UnsupportedParameterError,
     UnsupportedProviderError,
 )
 
 from republic.core.errors import ErrorKind, RepublicError
 
 logger = logging.getLogger(__name__)
+
+
+class AttemptDecision(Enum):
+    """What to do after one failed attempt."""
+
+    RETRY_SAME_MODEL = auto()
+    TRY_NEXT_MODEL = auto()
+
+
+@dataclass(frozen=True)
+class AttemptOutcome:
+    """Result of classifying and deciding how to handle one exception."""
+
+    error: RepublicError
+    decision: AttemptDecision
 
 
 class LLMCore:
@@ -171,6 +190,99 @@ class LLMCore:
         else:
             logger.warning("%s failed: %s", prefix, error)
 
+    @staticmethod
+    def _extract_status_code(exc: Exception) -> int | None:
+        status_code = getattr(exc, "status_code", None)
+        if isinstance(status_code, int):
+            return status_code
+
+        response = getattr(exc, "response", None)
+        response_status = getattr(response, "status_code", None)
+        if isinstance(response_status, int):
+            return response_status
+        return None
+
+    @staticmethod
+    def _text_matches(text: str, patterns: tuple[str, ...]) -> bool:
+        return any(re.search(pattern, text) for pattern in patterns)
+
+    def _classify_anyllm_exception(self, exc: Exception) -> ErrorKind | None:
+        error_map = [
+            ((MissingApiKeyError, AuthenticationError), ErrorKind.CONFIG),
+            (
+                (
+                    UnsupportedProviderError,
+                    UnsupportedParameterError,
+                    InvalidRequestError,
+                    ModelNotFoundError,
+                    ContextLengthExceededError,
+                ),
+                ErrorKind.INVALID_INPUT,
+            ),
+            ((RateLimitError, ContentFilterError), ErrorKind.TEMPORARY),
+            ((ProviderError, AnyLLMError), ErrorKind.PROVIDER),
+        ]
+        for types, kind in error_map:
+            if isinstance(exc, types):
+                return kind
+        return None
+
+    def _classify_by_http_status(self, exc: Exception) -> ErrorKind | None:
+        # SDK-native HTTP status handling (any-llm may pass these through unless unified mode is enabled).
+        status = self._extract_status_code(exc)
+        if status in {401, 403}:
+            return ErrorKind.CONFIG
+        if status in {400, 404, 413, 422}:
+            return ErrorKind.INVALID_INPUT
+        if status in {408, 409, 425, 429}:
+            return ErrorKind.TEMPORARY
+        if status is not None and 500 <= status < 600:
+            return ErrorKind.PROVIDER
+        return None
+
+    def _classify_by_text_signature(self, exc: Exception) -> ErrorKind | None:
+        name = type(exc).__name__.lower()
+        text = f"{name} {exc!s}".lower()
+
+        if self._text_matches(
+            text,
+            (
+                r"auth|authentication|unauthorized|forbidden|permission denied|access denied",
+                r"invalid[_\s-]?api[_\s-]?key|incorrect api key|api key.*not valid",
+            ),
+        ):
+            return ErrorKind.CONFIG
+
+        if self._text_matches(
+            text,
+            (
+                r"ratelimit|rate[_\s-]?limit|too many requests|quota exceeded",
+                r"\b429\b",
+            ),
+        ):
+            return ErrorKind.TEMPORARY
+
+        if self._text_matches(
+            text,
+            (
+                r"invalid request|bad request|validation|unprocessable",
+                r"model.*not.*found|does not exist",
+                r"context.*length|maximum.*context|token limit",
+                r"unsupported parameter",
+            ),
+        ):
+            return ErrorKind.INVALID_INPUT
+
+        if self._text_matches(
+            text,
+            (
+                r"timeout|timed out|connection error|network error",
+                r"internal server|service unavailable|gateway timeout",
+            ),
+        ):
+            return ErrorKind.PROVIDER
+        return None
+
     def classify_exception(self, exc: Exception) -> ErrorKind:
         if isinstance(exc, RepublicError):
             return exc.kind
@@ -190,18 +302,16 @@ class LLMCore:
             validation_error_type = None
         if validation_error_type is not None and isinstance(exc, validation_error_type):
             return ErrorKind.INVALID_INPUT
-        error_map = [
-            ((MissingApiKeyError, AuthenticationError), ErrorKind.CONFIG),
-            (
-                (UnsupportedProviderError, InvalidRequestError, ModelNotFoundError, ContextLengthExceededError),
-                ErrorKind.INVALID_INPUT,
-            ),
-            ((RateLimitError, ContentFilterError), ErrorKind.TEMPORARY),
-            ((ProviderError, AnyLLMError), ErrorKind.PROVIDER),
-        ]
-        for types, kind in error_map:
-            if isinstance(exc, types):
-                return kind
+
+        for classifier in (
+            self._classify_anyllm_exception,
+            self._classify_by_http_status,
+            self._classify_by_text_signature,
+        ):
+            mapped = classifier(exc)
+            if mapped is not None:
+                return mapped
+
         return ErrorKind.UNKNOWN
 
     def should_retry(self, kind: ErrorKind) -> bool:
@@ -215,12 +325,14 @@ class LLMCore:
         kind = self.classify_exception(exc)
         raise self.wrap_error(exc, kind, provider, model) from exc
 
-    def _handle_attempt_error(self, exc: Exception, provider_name: str, model_id: str, attempt: int) -> None:
+    def _handle_attempt_error(self, exc: Exception, provider_name: str, model_id: str, attempt: int) -> AttemptOutcome:
         kind = self.classify_exception(exc)
         wrapped = self.wrap_error(exc, kind, provider_name, model_id)
-        if not self.should_retry(kind):
-            raise wrapped
         self.log_error(wrapped, provider_name, model_id, attempt)
+        can_retry_same_model = self.should_retry(kind) and attempt + 1 < self.max_attempts()
+        if can_retry_same_model:
+            return AttemptOutcome(error=wrapped, decision=AttemptDecision.RETRY_SAME_MODEL)
+        return AttemptOutcome(error=wrapped, decision=AttemptDecision.TRY_NEXT_MODEL)
 
     def run_chat_sync(
         self,
@@ -238,6 +350,7 @@ class LLMCore:
     ) -> Any:
         last_provider: str | None = None
         last_model: str | None = None
+        last_error: RepublicError | None = None
         for provider_name, model_id, client in self.iter_clients(model, provider):
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
@@ -252,13 +365,19 @@ class LLMCore:
                         **kwargs,
                     )
                 except Exception as exc:
-                    self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                    outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                    last_error = outcome.error
+                    if outcome.decision is AttemptDecision.RETRY_SAME_MODEL:
+                        continue
+                    break
                 else:
                     result = on_response(response, provider_name, model_id, attempt)
                     if result is self.RETRY:
                         continue
                     return result
 
+        if last_error is not None:
+            raise last_error
         if last_provider and last_model:
             raise RepublicError(
                 ErrorKind.TEMPORARY,
@@ -282,6 +401,7 @@ class LLMCore:
     ) -> Any:
         last_provider: str | None = None
         last_model: str | None = None
+        last_error: RepublicError | None = None
         for provider_name, model_id, client in self.iter_clients(model, provider):
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
@@ -296,7 +416,11 @@ class LLMCore:
                         **kwargs,
                     )
                 except Exception as exc:
-                    self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                    outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                    last_error = outcome.error
+                    if outcome.decision is AttemptDecision.RETRY_SAME_MODEL:
+                        continue
+                    break
                 else:
                     result = on_response(response, provider_name, model_id, attempt)
                     if inspect.isawaitable(result):
@@ -305,6 +429,8 @@ class LLMCore:
                         continue
                     return result
 
+        if last_error is not None:
+            raise last_error
         if last_provider and last_model:
             raise RepublicError(
                 ErrorKind.TEMPORARY,
