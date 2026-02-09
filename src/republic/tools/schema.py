@@ -308,6 +308,7 @@ def tool(
     func: Callable[P, Any],
     *,
     name: str | None = None,
+    model: type[BaseModel] | None = None,
     description: str | None = None,
     context: bool = False,
 ) -> Tool: ...
@@ -318,6 +319,7 @@ def tool(
     func: None = None,
     *,
     name: str | None = None,
+    model: type[BaseModel] | None = None,
     description: str | None = None,
     context: bool = False,
 ) -> Callable[[Callable[P, Any]], Tool]: ...
@@ -327,12 +329,15 @@ def tool(
     func: Callable[..., Any] | None = None,
     *,
     name: str | None = None,
+    model: type[BaseModel] | None = None,
     description: str | None = None,
     context: bool = False,
 ) -> Tool | Callable[[Callable[..., Any]], Tool]:
     """Decorator to convert a function into a Tool instance."""
 
     def _create_tool(f: Callable[..., Any]) -> Tool:
+        if model is not None:
+            return tool_from_model(model, f, name=name, description=description, context=context)
         return Tool.from_callable(f, name=name, description=description, context=context)
 
     if func is None:
