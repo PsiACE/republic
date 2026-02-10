@@ -137,15 +137,22 @@ def test_tape_requires_anchor_then_records_full_run(fake_anyllm) -> None:
     assert run_event.payload["data"]["status"] == "ok"
 
 
-def test_tape_has_no_chat_capabilities(fake_anyllm) -> None:
+def test_tape_chat_shortcuts_bind_current_tape(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openai")
+    client.queue_completion(make_response(text="step one"), make_response(text="step two"))
+
     llm = LLM(model="openai:gpt-4o-mini", api_key="dummy")
     tape = llm.tape("ops")
+    tape.handoff("incident_42")
 
-    assert not hasattr(tape, "chat")
-    assert not hasattr(tape, "run_tools")
-    assert not hasattr(tape, "tool_calls")
-    assert not hasattr(tape, "stream")
-    assert not hasattr(tape, "stream_events")
+    first = tape.chat("Investigate DB timeout")
+    second = tape.chat("Include rollback criteria")
+
+    assert first.error is None
+    assert second.error is None
+
+    second_messages = client.calls[-1]["messages"]
+    assert [message["role"] for message in second_messages] == ["user", "assistant", "user"]
 
 
 @tool

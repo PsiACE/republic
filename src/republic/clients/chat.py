@@ -21,7 +21,7 @@ from republic.core.results import (
     ToolAutoResult,
 )
 from republic.tape.context import TapeContext
-from republic.tape.session import TapeManager
+from republic.tape.manager import TapeManager
 from republic.tools.context import ToolContext
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput, ToolSet, normalize_tools

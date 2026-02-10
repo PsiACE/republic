@@ -99,7 +99,7 @@ class LLM:
         self._tape.default_context = value
 
     def tape(self, name: str, *, context: TapeContext | None = None) -> Tape:
-        return self._tape.tape(name, context=context)
+        return self._tape.tape(name, llm=self, context=context)
 
     def tapes(self) -> list[str]:
         return self._tape.list_tapes()

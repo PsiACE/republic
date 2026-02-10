@@ -35,11 +35,7 @@ else:
 tape = llm.tape("release-notes")
 tape.handoff("draft_v1", state={"owner": "assistant"})
 
-reply = llm.chat(
-    "Summarize the version changes in three bullets.",
-    tape=tape.name,
-    system_prompt="Keep it concise.",
-)
+reply = tape.chat("Summarize the version changes in three bullets.", system_prompt="Keep it concise.")
 print(reply.value)
 ```
 

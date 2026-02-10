@@ -2,8 +2,9 @@
 
 from republic.tape.context import ContextSelection, TapeContext
 from republic.tape.entries import TapeEntry
+from republic.tape.manager import TapeManager
 from republic.tape.query import QueryResult, TapeQuery
-from republic.tape.session import Tape, TapeManager
+from republic.tape.session import Tape
 from republic.tape.store import InMemoryTapeStore, TapeStore
 
 __all__ = [
@@ -11,9 +12,9 @@ __all__ = [
     "InMemoryTapeStore",
     "QueryResult",
     "Tape",
-    "TapeManager",
     "TapeContext",
     "TapeEntry",
+    "TapeManager",
     "TapeQuery",
     "TapeStore",
 ]
