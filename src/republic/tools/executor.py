@@ -43,15 +43,16 @@ class ToolExecutor:
             return ToolExecution(tool_calls=[], tool_results=[], error=None)
 
         results: list[Any] = []
+        error: ErrorPayload | None = None
         for tool_response in tool_calls:
             outcome, outcome_error = self._handle_tool_response(tool_response, tool_map, context)
             if outcome_error is not None:
-                return ToolExecution(tool_calls=tool_calls, tool_results=results, error=outcome_error)
+                error = outcome_error
             if outcome is self._skip:
                 continue
             results.append(outcome)
 
-        return ToolExecution(tool_calls=tool_calls, tool_results=results, error=None)
+        return ToolExecution(tool_calls=tool_calls, tool_results=results, error=error)
 
     def _handle_tool_response(
         self,
@@ -81,17 +82,19 @@ class ToolExecutor:
                 return tool_obj.run(context=context, **tool_args), None
             return tool_obj.run(**tool_args), None
         except ValidationError as exc:
-            return self._skip, ErrorPayload(
+            error = ErrorPayload(
                 ErrorKind.INVALID_INPUT,
                 f"Tool '{tool_name}' argument validation failed.",
                 details={"errors": exc.errors()},
             )
+            return error.as_dict(), error
         except Exception as exc:
-            return self._skip, ErrorPayload(
+            error = ErrorPayload(
                 ErrorKind.TOOL,
                 f"Tool '{tool_name}' execution failed.",
                 details={"error": repr(exc)},
             )
+            return error.as_dict(), error
 
     def _normalize_response(
         self,
