@@ -26,14 +26,14 @@ def main() -> None:
 
     # Tape default context uses the latest anchor, so handoff first.
     tape.handoff("network_issue", state={"owner": "tier1"})
-    out1 = tape.chat("Customer cannot connect to VPN. Give triage steps.", max_tokens=64)
+    out1 = llm.chat("Customer cannot connect to VPN. Give triage steps.", tape=tape.name, max_tokens=64)
     print("reply1:", out1.value, out1.error)
 
-    out2 = tape.chat("Also include DNS checks.", max_tokens=64)
+    out2 = llm.chat("Also include DNS checks.", tape=tape.name, max_tokens=64)
     print("reply2:", out2.value, out2.error)
 
     tape.handoff("billing_issue", state={"owner": "tier2"})
-    out3 = tape.chat("Customer asks for refund process.", max_tokens=64)
+    out3 = llm.chat("Customer asks for refund process.", tape=tape.name, max_tokens=64)
     print("reply3:", out3.value, out3.error)
 
     network_entries = tape.query().after_anchor("network_issue").all()

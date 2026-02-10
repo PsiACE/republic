@@ -74,7 +74,7 @@ def main() -> None:
     print("== context tool with tape ==")
     tape = llm.tape("ops-tools")
     tape.handoff("incident", state={"owner": "tier1"})
-    from_tape = tape.run_tools("Call save_note with title 'restart database'.", tools=[save_note])
+    from_tape = llm.run_tools("Call save_note with title 'restart database'.", tape=tape.name, tools=[save_note])
     print(from_tape.kind, from_tape.tool_results, from_tape.error)
 
 

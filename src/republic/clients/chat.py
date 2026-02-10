@@ -20,10 +20,8 @@ from republic.core.results import (
     TextStream,
     ToolAutoResult,
 )
-from republic.tape.context import ContextSelection, TapeContext, build_messages
-from republic.tape.entries import TapeEntry
-from republic.tape.query import TapeQuery
-from republic.tape.store import InMemoryTapeStore, TapeStore
+from republic.tape.context import TapeContext
+from republic.tape.session import TapeManager
 from republic.tools.context import ToolContext
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput, ToolSet, normalize_tools
@@ -173,17 +171,15 @@ class ChatClient:
         self,
         core: LLMCore,
         tool_executor: ToolExecutor,
-        store: TapeStore | None = None,
-        context: TapeContext | None = None,
+        tape: TapeManager,
     ) -> None:
         self._core = core
         self._tool_executor = tool_executor
-        self._tape_store = store or InMemoryTapeStore()
-        self._default_context = context or TapeContext()
+        self._tape = tape
 
     @property
     def default_context(self) -> TapeContext:
-        return self._default_context
+        return self._tape.default_context
 
     def _validate_chat_input(
         self,
@@ -237,7 +233,7 @@ class ChatClient:
             payload.append(user_message)
             return payload, [], None
 
-        selection = self.read_messages(tape, context=context)
+        selection = self._tape.read_messages(tape, context=context)
         history = selection.messages
         payload = []
         if system_prompt:
@@ -364,75 +360,6 @@ class ChatClient:
         except (ValueError, TypeError) as exc:
             return ToolSet([], []), ErrorPayload(ErrorKind.INVALID_INPUT, str(exc))
 
-    def read_entries(self, tape: str) -> list[TapeEntry]:
-        return self._tape_store.read(tape) or []
-
-    def read_messages(self, tape: str, *, context: TapeContext | None = None) -> ContextSelection:
-        entries = self.read_entries(tape)
-        active_context = context or self._default_context
-        return build_messages(entries, active_context)
-
-    def append_entry(self, tape: str, entry: TapeEntry) -> None:
-        self._tape_store.append(tape, entry)
-
-    def reset_tape(self, tape: str) -> None:
-        self._tape_store.reset(tape)
-
-    def query_tape(self, tape: str) -> TapeQuery:
-        return TapeQuery(tape=tape, store=self._tape_store)
-
-    def handoff(self, tape: str, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
-        entry = TapeEntry.anchor(name, state=state, **meta)
-        event = TapeEntry.event("handoff", {"name": name, "state": state or {}}, **meta)
-        self._tape_store.append(tape, entry)
-        self._tape_store.append(tape, event)
-        return [entry, event]
-
-    def _append_tape_messages(self, tape: str, messages: list[dict[str, Any]], *, meta: dict[str, Any]) -> None:
-        for message in messages:
-            self._tape_store.append(tape, TapeEntry.message(message, **meta))
-
-    def _append_tool_events(
-        self,
-        tape: str,
-        tool_calls: list[dict[str, Any]] | None,
-        tool_results: list[Any] | None,
-        *,
-        meta: dict[str, Any],
-    ) -> None:
-        if tool_calls:
-            self._tape_store.append(tape, TapeEntry.tool_call(tool_calls, **meta))
-        if tool_results is not None:
-            self._tape_store.append(tape, TapeEntry.tool_result(tool_results, **meta))
-
-    def _append_system_prompt(self, tape: str, system_prompt: str | None, *, meta: dict[str, Any]) -> None:
-        if system_prompt:
-            self._tape_store.append(tape, TapeEntry.system(system_prompt, **meta))
-
-    def _append_error(self, tape: str, error: ErrorPayload, *, meta: dict[str, Any]) -> None:
-        self._tape_store.append(tape, TapeEntry.error(error, **meta))
-
-    def _append_run_event(
-        self,
-        tape: str,
-        *,
-        meta: dict[str, Any],
-        status: str,
-        response: Any | None,
-        provider: str | None,
-        model: str | None,
-        usage: dict[str, Any] | None = None,
-    ) -> None:
-        data: dict[str, Any] = {"status": status}
-        resolved_usage = usage or self._extract_usage(response)
-        if resolved_usage is not None:
-            data["usage"] = resolved_usage
-        if provider:
-            data["provider"] = provider
-        if model:
-            data["model"] = model
-        self._tape_store.append(tape, TapeEntry.event("run", data, **meta))
-
     def _update_tape(
         self,
         prepared: PreparedChat,
@@ -448,23 +375,16 @@ class ChatClient:
     ) -> None:
         if prepared.tape is None:
             return
-        meta = {"run_id": prepared.run_id}
-        self._append_system_prompt(prepared.tape, prepared.system_prompt, meta=meta)
-        if prepared.context_error is not None:
-            self._append_error(prepared.tape, prepared.context_error, meta=meta)
-        self._append_tape_messages(prepared.tape, prepared.new_messages, meta=meta)
-        self._append_tool_events(prepared.tape, tool_calls, tool_results, meta=meta)
-        if error is not None:
-            self._append_error(prepared.tape, error, meta=meta)
-        if response_text is not None:
-            self._tape_store.append(
-                prepared.tape,
-                TapeEntry.message({"role": "assistant", "content": response_text}, **meta),
-            )
-        self._append_run_event(
-            prepared.tape,
-            meta=meta,
-            status="error" if error is not None else "ok",
+        self._tape.record_chat(
+            tape=prepared.tape,
+            run_id=prepared.run_id,
+            system_prompt=prepared.system_prompt,
+            context_error=prepared.context_error,
+            new_messages=prepared.new_messages,
+            response_text=response_text,
+            tool_calls=tool_calls,
+            tool_results=tool_results,
+            error=error,
             response=response,
             provider=provider,
             model=model,

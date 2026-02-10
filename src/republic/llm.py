@@ -21,7 +21,7 @@ from republic.core.results import (
     TextStream,
     ToolAutoResult,
 )
-from republic.tape import ContextSelection, Tape, TapeContext, TapeEntry, TapeQuery, TapeStore
+from republic.tape import ContextSelection, Tape, TapeContext, TapeEntry, TapeManager, TapeQuery, TapeStore
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput
 
@@ -67,11 +67,11 @@ class LLM:
             error_classifier=error_classifier,
         )
         tool_executor = ToolExecutor()
+        self._tape = TapeManager(store=tape_store, default_context=context)
         self._chat_client = ChatClient(
             self._core,
             tool_executor,
-            store=tape_store,
-            context=context,
+            tape=self._tape,
         )
         self._text_client = TextClient(self._chat_client)
         self.embeddings = EmbeddingClient(self._core)
@@ -92,17 +92,17 @@ class LLM:
 
     @property
     def context(self) -> TapeContext:
-        return self._chat_client.default_context
+        return self._tape.default_context
 
     @context.setter
     def context(self, value: TapeContext) -> None:
-        self._chat_client._default_context = value
+        self._tape.default_context = value
 
     def tape(self, name: str, *, context: TapeContext | None = None) -> Tape:
-        return Tape(name, self._chat_client, context=context)
+        return self._tape.tape(name, context=context)
 
     def tapes(self) -> list[str]:
-        return self._chat_client._tape_store.list_tapes()
+        return self._tape.list_tapes()
 
     def chat(
         self,
@@ -427,19 +427,19 @@ class LLM:
         )
 
     def handoff(self, tape: str, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
-        return self._chat_client.handoff(tape, name, state=state, **meta)
+        return self._tape.handoff(tape, name, state=state, **meta)
 
     def read_entries(self, tape: str) -> list[TapeEntry]:
-        return self._chat_client.read_entries(tape)
+        return self._tape.read_entries(tape)
 
     def read_messages(self, tape: str, *, context: TapeContext | None = None) -> ContextSelection:
-        return self._chat_client.read_messages(tape, context=context)
+        return self._tape.read_messages(tape, context=context)
 
     def query(self, tape: str) -> TapeQuery:
-        return self._chat_client.query_tape(tape)
+        return self._tape.query_tape(tape)
 
     def reset_tape(self, tape: str) -> None:
-        self._chat_client.reset_tape(tape)
+        self._tape.reset_tape(tape)
 
     def __repr__(self) -> str:
         return (
