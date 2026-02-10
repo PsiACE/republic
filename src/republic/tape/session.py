@@ -67,7 +67,7 @@ class TapeManager:
         self._tape_store.append(tape, event)
         return [entry, event]
 
-    def record_chat(
+    def record_chat(  # noqa: C901
         self,
         *,
         tape: str,
