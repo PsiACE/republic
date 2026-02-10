@@ -81,7 +81,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         **kwargs: Any,
     ) -> StructuredOutput:
         return self._llm.chat(
@@ -92,7 +91,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             **kwargs,
         )
 
@@ -105,7 +104,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         **kwargs: Any,
     ) -> StructuredOutput:
         return await self._llm.chat_async(
@@ -116,7 +114,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             **kwargs,
         )
 
@@ -129,7 +127,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> StructuredOutput:
@@ -141,7 +138,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             tools=tools,
             **kwargs,
         )
@@ -155,7 +152,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> StructuredOutput:
@@ -167,7 +163,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             tools=tools,
             **kwargs,
         )
@@ -181,7 +177,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> ToolAutoResult:
@@ -193,7 +188,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             tools=tools,
             **kwargs,
         )
@@ -207,7 +202,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> ToolAutoResult:
@@ -219,7 +213,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             tools=tools,
             **kwargs,
         )
@@ -233,7 +227,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         **kwargs: Any,
     ) -> TextStream:
         return self._llm.stream(
@@ -244,7 +237,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             **kwargs,
         )
 
@@ -257,7 +250,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         **kwargs: Any,
     ) -> AsyncTextStream:
         return await self._llm.stream_async(
@@ -268,7 +260,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             **kwargs,
         )
 
@@ -281,7 +273,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> StreamEvents:
@@ -293,7 +284,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             tools=tools,
             **kwargs,
         )
@@ -307,7 +298,6 @@ class Tape:
         provider: str | None = None,
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
-        context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> AsyncStreamEvents:
@@ -319,7 +309,7 @@ class Tape:
             messages=messages,
             max_tokens=max_tokens,
             tape=self._name,
-            context=context or self.context,
+            context=self.context,
             tools=tools,
             **kwargs,
         )
