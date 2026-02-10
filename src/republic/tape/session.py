@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class Tape:
-    """Named tape view."""
+    """A scoped LLM session that interacts with a specific tape."""
 
     def __init__(
         self,
