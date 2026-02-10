@@ -12,7 +12,7 @@ from republic.core.results import (
     ToolAutoResult,
 )
 from republic.llm import LLM
-from republic.tape import ContextSelection, Tape, TapeContext, TapeEntry, TapeQuery
+from republic.tape import ContextSelection, Tape, TapeContext, TapeEntry, TapeManager, TapeQuery
 from republic.tools import Tool, ToolContext, ToolSet, schema_from_model, tool, tool_from_model
 
 __all__ = [
@@ -28,6 +28,7 @@ __all__ = [
     "Tape",
     "TapeContext",
     "TapeEntry",
+    "TapeManager",
     "TapeQuery",
     "TextStream",
     "Tool",
