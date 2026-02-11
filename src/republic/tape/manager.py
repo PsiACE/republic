@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from republic.core.results import ErrorPayload
-from republic.tape.context import ContextSelection, TapeContext, build_messages
+from republic.tape.context import TapeContext, build_messages
 from republic.tape.entries import TapeEntry
 from republic.tape.query import TapeQuery
 from republic.tape.store import InMemoryTapeStore, TapeStore
@@ -46,7 +46,7 @@ class TapeManager:
     def read_entries(self, tape: str) -> list[TapeEntry]:
         return self._tape_store.read(tape) or []
 
-    def read_messages(self, tape: str, *, context: TapeContext | None = None) -> ContextSelection:
+    def read_messages(self, tape: str, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         active_context = context or self._global_context
         return build_messages(self.read_entries(tape), active_context)
 
@@ -104,7 +104,7 @@ class TapeManager:
         if tool_results is not None:
             self._tape_store.append(tape, TapeEntry.tool_result(tool_results, **meta))
 
-        if error is not None:
+        if error is not None and error is not context_error:
             self._tape_store.append(tape, TapeEntry.error(error, **meta))
 
         if response_text is not None:

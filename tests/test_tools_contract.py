@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from republic import Tool, ToolContext, tool, tool_from_model
 from republic.core.errors import ErrorKind
+from republic.core.results import ErrorPayload
 from republic.tools import ToolExecutor, normalize_tools
 
 
@@ -23,12 +24,12 @@ def test_tool_from_model_validates_payload() -> None:
     assert ok.error is None
     assert ok.tool_results == [{"title": "buy milk"}]
 
-    invalid = executor.execute(
-        [{"function": {"name": "reminder", "arguments": {"missing": "value"}}}],
-        tools=[reminder_tool],
-    )
-    assert invalid.error is not None
-    assert invalid.error.kind == ErrorKind.INVALID_INPUT
+    with pytest.raises(ErrorPayload) as exc_info:
+        executor.execute(
+            [{"function": {"name": "reminder", "arguments": {"missing": "value"}}}],
+            tools=[reminder_tool],
+        )
+    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
 
 
 def test_context_tool_requires_context() -> None:
@@ -40,9 +41,9 @@ def test_context_tool_requires_context() -> None:
     executor = ToolExecutor()
     calls = [{"function": {"name": "write_note", "arguments": {"title": "hello"}}}]
 
-    missing = executor.execute(calls, tools=[write_note])
-    assert missing.error is not None
-    assert missing.error.kind == ErrorKind.INVALID_INPUT
+    with pytest.raises(ErrorPayload) as exc_info:
+        executor.execute(calls, tools=[write_note])
+    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
 
     ctx = ToolContext(tape="ops", run_id="run-1")
     ok = executor.execute(calls, tools=[write_note], context=ctx)

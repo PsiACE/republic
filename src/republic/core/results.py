@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from republic.core.errors import ErrorKind
 
 
-@dataclass(frozen=True)
-class ErrorPayload:
+@dataclass
+class ErrorPayload(Exception):
     kind: ErrorKind
     message: str
     details: dict[str, Any] | None = None
+
+    def __str__(self) -> str:
+        return f"[{self.kind.value}] {self.message}"
 
     def as_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -23,16 +26,6 @@ class ErrorPayload:
         if self.details:
             payload["details"] = self.details
         return payload
-
-
-@dataclass(frozen=True)
-class StructuredOutput:
-    value: Any | None
-    error: ErrorPayload | None = None
-
-    @property
-    def ok(self) -> bool:
-        return self.error is None
 
 
 @dataclass
@@ -124,8 +117,8 @@ class AsyncStreamEvents:
 
 @dataclass(frozen=True)
 class ToolExecution:
-    tool_calls: list[dict[str, Any]]
-    tool_results: list[Any]
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    tool_results: list[Any] = field(default_factory=list)
     error: ErrorPayload | None = None
 
 

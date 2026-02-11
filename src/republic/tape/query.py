@@ -12,12 +12,6 @@ from republic.tape.store import TapeStore
 
 
 @dataclass(frozen=True)
-class QueryResult:
-    entries: list[TapeEntry]
-    error: ErrorPayload | None = None
-
-
-@dataclass(frozen=True)
 class TapeQuery:
     tape: str
     store: TapeStore
@@ -92,43 +86,42 @@ class TapeQuery:
             _limit=value,
         )
 
-    def all(self) -> QueryResult:
-        entries, error = self._read_entries()
+    def all(self) -> list[TapeEntry]:
+        entries = self._read_entries()
         if self._limit is not None:
-            return QueryResult(entries[: self._limit], error)
-        return QueryResult(entries, error)
+            return entries[: self._limit]
+        return entries
 
-    def _read_entries(self) -> tuple[list[TapeEntry], ErrorPayload | None]:
+    def _read_entries(self) -> list[TapeEntry]:
         entries = self.store.read(self.tape) or []
         start_index = 0
         end_index: int | None = None
-        error: ErrorPayload | None = None
 
         if self._between is not None:
             start_name, end_name = self._between
             start_idx = _anchor_index(entries, start_name, default=-1, forward=False)
             if start_idx < 0:
-                return [], ErrorPayload(ErrorKind.NOT_FOUND, f"Anchor '{start_name}' was not found.")
+                raise ErrorPayload(ErrorKind.NOT_FOUND, f"Anchor '{start_name}' was not found.")
             end_idx = _anchor_index(entries, end_name, default=-1, forward=True, start=start_idx + 1)
             if end_idx < 0:
-                return [], ErrorPayload(ErrorKind.NOT_FOUND, f"Anchor '{end_name}' was not found.")
+                raise ErrorPayload(ErrorKind.NOT_FOUND, f"Anchor '{end_name}' was not found.")
             start_index = min(start_idx + 1, len(entries))
             end_index = min(max(start_index, end_idx), len(entries))
         elif self._after_last:
             anchor_index = _anchor_index(entries, None, default=-1, forward=False)
             if anchor_index < 0:
-                return [], ErrorPayload(ErrorKind.NOT_FOUND, "No anchors found in tape.")
+                raise ErrorPayload(ErrorKind.NOT_FOUND, "No anchors found in tape.")
             start_index = min(anchor_index + 1, len(entries))
         elif self._after_anchor is not None:
             anchor_index = _anchor_index(entries, self._after_anchor, default=-1, forward=False)
             if anchor_index < 0:
-                return [], ErrorPayload(ErrorKind.NOT_FOUND, f"Anchor '{self._after_anchor}' was not found.")
+                raise ErrorPayload(ErrorKind.NOT_FOUND, f"Anchor '{self._after_anchor}' was not found.")
             start_index = min(anchor_index + 1, len(entries))
 
         sliced = entries[start_index:end_index]
         if self._kinds:
             sliced = [entry for entry in sliced if entry.kind in self._kinds]
-        return sliced, error
+        return sliced
 
 
 def _anchor_index(

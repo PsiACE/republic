@@ -17,11 +17,10 @@ from republic.core.results import (
     AsyncStreamEvents,
     AsyncTextStream,
     StreamEvents,
-    StructuredOutput,
     TextStream,
     ToolAutoResult,
 )
-from republic.tape import ContextSelection, Tape, TapeContext, TapeEntry, TapeManager, TapeQuery, TapeStore
+from republic.tape import Tape, TapeContext, TapeEntry, TapeManager, TapeQuery, TapeStore
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput
 
@@ -116,7 +115,7 @@ class LLM:
         tape: str | None = None,
         context: TapeContext | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> str:
         return self._chat_client.chat(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -141,7 +140,7 @@ class LLM:
         tape: str | None = None,
         context: TapeContext | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> str:
         return await self._chat_client.chat_async(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -167,7 +166,7 @@ class LLM:
         context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> list[dict[str, Any]]:
         return self._chat_client.tool_calls(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -194,7 +193,7 @@ class LLM:
         context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> list[dict[str, Any]]:
         return await self._chat_client.tool_calls_async(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -269,7 +268,7 @@ class LLM:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
+    ) -> bool:
         return self._text_client.if_(input_text, question, tape=tape, context=context)
 
     async def if_async(
@@ -279,7 +278,7 @@ class LLM:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
+    ) -> bool:
         return await self._text_client.if_async(input_text, question, tape=tape, context=context)
 
     def classify(
@@ -289,7 +288,7 @@ class LLM:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
+    ) -> str:
         return self._text_client.classify(input_text, choices, tape=tape, context=context)
 
     async def classify_async(
@@ -299,7 +298,7 @@ class LLM:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
+    ) -> str:
         return await self._text_client.classify_async(input_text, choices, tape=tape, context=context)
 
     def embed(
@@ -432,7 +431,7 @@ class LLM:
     def read_entries(self, tape: str) -> list[TapeEntry]:
         return self._tape.read_entries(tape)
 
-    def read_messages(self, tape: str, *, context: TapeContext | None = None) -> ContextSelection:
+    def read_messages(self, tape: str, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         return self._tape.read_messages(tape, context=context)
 
     def query(self, tape: str) -> TapeQuery:

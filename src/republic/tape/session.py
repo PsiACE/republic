@@ -8,11 +8,10 @@ from republic.core.results import (
     AsyncStreamEvents,
     AsyncTextStream,
     StreamEvents,
-    StructuredOutput,
     TextStream,
     ToolAutoResult,
 )
-from republic.tape.context import ContextSelection, TapeContext
+from republic.tape.context import TapeContext
 from republic.tape.entries import TapeEntry
 from republic.tape.query import TapeQuery
 from republic.tools.schema import ToolInput
@@ -56,7 +55,7 @@ class Tape:
     def read_entries(self) -> list[TapeEntry]:
         return self._manager.read_entries(self._name)
 
-    def read_messages(self, *, context: TapeContext | None = None) -> ContextSelection:
+    def read_messages(self, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         active_context = context or self.context
         return self._manager.read_messages(self._name, context=active_context)
 
@@ -82,7 +81,7 @@ class Tape:
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> str:
         return self._llm.chat(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -105,7 +104,7 @@ class Tape:
         messages: list[dict[str, Any]] | None = None,
         max_tokens: int | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> str:
         return await self._llm.chat_async(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -129,7 +128,7 @@ class Tape:
         max_tokens: int | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> list[dict[str, Any]]:
         return self._llm.tool_calls(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -154,7 +153,7 @@ class Tape:
         max_tokens: int | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> list[dict[str, Any]]:
         return await self._llm.tool_calls_async(
             prompt=prompt,
             system_prompt=system_prompt,
