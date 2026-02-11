@@ -71,7 +71,7 @@ class ToolExecutor:
         tool_args = tool_response.get("function", {}).get("arguments", {})
         tool_args, error = self._normalize_tool_args(tool_name, tool_args)
         if error is not None:
-            return self._skip, error
+            return tool_args, error
         try:
             if tool_obj.context:
                 if context is None:
