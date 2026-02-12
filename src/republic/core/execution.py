@@ -334,6 +334,16 @@ class LLMCore:
             return AttemptOutcome(error=wrapped, decision=AttemptDecision.RETRY_SAME_MODEL)
         return AttemptOutcome(error=wrapped, decision=AttemptDecision.TRY_NEXT_MODEL)
 
+    def _decide_kwargs_for_provider(
+        self, provider: str, max_tokens: int | None, kwargs: dict[str, Any]
+    ) -> dict[str, Any]:
+        use_completion_tokens = "openai" in provider.lower()
+        if not use_completion_tokens:
+            return {**kwargs, "max_tokens": max_tokens}
+        if "max_completion_tokens" in kwargs:
+            return kwargs
+        return {**kwargs, "max_completion_tokens": max_tokens}
+
     def run_chat_sync(
         self,
         *,
@@ -359,10 +369,9 @@ class LLMCore:
                         model=model_id,
                         messages=messages_payload,
                         tools=tools_payload,
-                        max_tokens=max_tokens,
                         stream=stream,
                         reasoning_effort=reasoning_effort,
-                        **kwargs,
+                        **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
                     )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
@@ -410,10 +419,9 @@ class LLMCore:
                         model=model_id,
                         messages=messages_payload,
                         tools=tools_payload,
-                        max_tokens=max_tokens,
                         stream=stream,
                         reasoning_effort=reasoning_effort,
-                        **kwargs,
+                        **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
                     )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
