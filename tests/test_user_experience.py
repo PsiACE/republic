@@ -153,6 +153,11 @@ def echo(text: str) -> str:
     return text.upper()
 
 
+@tool
+async def async_echo(text: str) -> str:
+    return text.upper()
+
+
 def test_stream_events_carries_text_tools_usage_and_final(fake_anyllm) -> None:
     client = fake_anyllm.ensure("openai")
     client.queue_completion(
@@ -214,6 +219,34 @@ def test_stream_events_merges_tool_deltas_without_id_or_index(fake_anyllm) -> No
     assert tool_results[0].data["result"] == "TOKYO"
     assert stream.error is None
     assert stream.usage == {"total_tokens": 9}
+
+
+@pytest.mark.asyncio
+async def test_run_tools_async_executes_async_tool_handler(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openai")
+    client.queue_completion(make_response(tool_calls=[make_tool_call("async_echo", '{"text":"tokyo"}')]))
+
+    llm = LLM(model="openai:gpt-4o-mini", api_key="dummy")
+    result = await llm.run_tools_async("Call async echo for tokyo", tools=[async_echo])
+
+    assert result.kind == "tools"
+    assert result.tool_results == ["TOKYO"]
+    assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_stream_events_async_executes_async_tool_handler(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openai")
+    client.queue_completion(make_response(tool_calls=[make_tool_call("async_echo", '{"text":"tokyo"}')]))
+
+    llm = LLM(model="openai:gpt-4o-mini", api_key="dummy")
+    stream = await llm.stream_events_async("Call async echo for tokyo", tools=[async_echo])
+    events = [event async for event in stream]
+    tool_results = [event for event in events if event.kind == "tool_result"]
+
+    assert len(tool_results) == 1
+    assert tool_results[0].data["result"] == "TOKYO"
+    assert stream.error is None
 
 
 def test_text_shortcuts_and_embeddings_share_the_same_facade(fake_anyllm) -> None:
