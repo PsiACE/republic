@@ -559,6 +559,61 @@ class ChatClient:
         )
         return events, tool_results
 
+    async def _finalize_event_stream_async(
+        self,
+        prepared: PreparedChat,
+        *,
+        parts: list[str],
+        tool_calls: list[dict[str, Any]],
+        state: StreamState,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+        usage: dict[str, Any] | None,
+    ) -> tuple[list[StreamEvent], list[Any]]:
+        events: list[StreamEvent] = []
+        for idx, call in enumerate(tool_calls):
+            events.append(StreamEvent("tool_call", {"index": idx, "call": call}))
+
+        tool_results: list[Any] = []
+        try:
+            tool_results = await self._execute_tool_calls_async(
+                prepared,
+                tool_calls,
+                provider_name,
+                model_id,
+            )
+        except ErrorPayload as exc:
+            state.error = exc
+            events.append(StreamEvent("error", exc.as_dict()))
+        if tool_results:
+            for idx, result in enumerate(tool_results):
+                events.append(StreamEvent("tool_result", {"index": idx, "result": result}))
+
+        if not parts and not tool_calls and state.error is None:
+            empty = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
+            self._core.log_error(empty, provider_name, model_id, attempt)
+            empty_error = ErrorPayload(empty.kind, empty.message)
+            state.error = empty_error
+            events.append(StreamEvent("error", empty_error.as_dict()))
+
+        if usage is not None:
+            events.append(StreamEvent("usage", usage))
+
+        events.append(
+            StreamEvent(
+                "final",
+                self._final_event_data(
+                    text="".join(parts) if parts else None,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    usage=usage,
+                    error=state.error,
+                ),
+            )
+        )
+        return events, tool_results
+
     def _finalize_event_stream_state(
         self,
         prepared: PreparedChat,
@@ -664,16 +719,53 @@ class ChatClient:
     ) -> ToolAutoResult | object:
         tool_calls = self._extract_tool_calls(response)
         if tool_calls:
-            tool_context = ToolContext(
-                tape=prepared.tape,
-                run_id=prepared.run_id,
-                meta={"provider": provider_name, "model": model_id},
-                state={},
-            )
             execution = self._tool_executor.execute(
                 tool_calls,
                 tools=prepared.toolset.runnable,
-                context=tool_context,
+                context=self._make_tool_context(prepared, provider_name, model_id),
+            )
+            if prepared.should_update:
+                self._update_tape(
+                    prepared,
+                    None,
+                    tool_calls=execution.tool_calls,
+                    tool_results=execution.tool_results,
+                    response=response,
+                    provider=provider_name,
+                    model=model_id,
+                )
+            return ToolAutoResult.tools_result(execution.tool_calls, execution.tool_results)
+
+        text = self._extract_text(response)
+        if text:
+            if prepared.should_update:
+                self._update_tape(
+                    prepared,
+                    text,
+                    response=response,
+                    provider=provider_name,
+                    model=model_id,
+                )
+            return ToolAutoResult.text_result(text)
+
+        empty_error = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
+        self._core.log_error(empty_error, provider_name, model_id, attempt)
+        return self._core.RETRY
+
+    async def _handle_tools_auto_response_async(
+        self,
+        prepared: PreparedChat,
+        response: Any,
+        provider_name: str,
+        model_id: str,
+        attempt: int,
+    ) -> ToolAutoResult | object:
+        tool_calls = self._extract_tool_calls(response)
+        if tool_calls:
+            execution = await self._tool_executor.execute_async(
+                tool_calls,
+                tools=prepared.toolset.runnable,
+                context=self._make_tool_context(prepared, provider_name, model_id),
             )
             if prepared.should_update:
                 self._update_tape(
@@ -924,7 +1016,7 @@ class ChatClient:
                 stream=False,
                 tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
-                on_response=partial(self._handle_tools_auto_response, prepared),
+                on_response=partial(self._handle_tools_auto_response_async, prepared),
             )
         except ErrorPayload as error:
             return self._tool_auto_error_result(prepared, error)
@@ -1339,7 +1431,7 @@ class ChatClient:
                         yield StreamEvent("text", {"delta": text})
 
                 tool_calls = assembler.finalize()
-                events, tool_results = self._finalize_event_stream(
+                events, tool_results = await self._finalize_event_stream_async(
                     prepared,
                     parts=parts,
                     tool_calls=tool_calls,
@@ -1443,18 +1535,58 @@ class ChatClient:
         provider_name: str,
         model_id: str,
     ) -> AsyncStreamEvents:
-        sync_events = self._build_event_stream_from_response(
-            prepared,
-            response,
-            provider_name,
-            model_id,
-        )
+        text = self._extract_text(response)
+        tool_calls = self._extract_tool_calls(response)
+        usage = self._extract_usage(response)
+        state = StreamState(usage=usage)
+        tool_results: list[Any] = []
 
         async def _iterator() -> AsyncIterator[StreamEvent]:
-            for event in sync_events:
-                yield event
+            nonlocal tool_results
+            try:
+                tool_results = await self._execute_tool_calls_async(prepared, tool_calls, provider_name, model_id)
+            except ErrorPayload as exc:
+                state.error = exc
+            if not text and not tool_calls and state.error is None:
+                empty = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
+                self._core.log_error(empty, provider_name, model_id, 0)
+                state.error = ErrorPayload(empty.kind, empty.message)
 
-        return AsyncStreamEvents(_iterator(), state=StreamState(error=sync_events.error, usage=sync_events.usage))
+            if text:
+                yield StreamEvent("text", {"delta": text})
+            for idx, call in enumerate(tool_calls):
+                yield StreamEvent("tool_call", {"index": idx, "call": call})
+            for idx, result in enumerate(tool_results):
+                yield StreamEvent("tool_result", {"index": idx, "result": result})
+            if state.error is not None:
+                yield StreamEvent("error", state.error.as_dict())
+            if usage is not None:
+                yield StreamEvent("usage", usage)
+            yield StreamEvent(
+                "final",
+                self._final_event_data(
+                    text=text or None,
+                    tool_calls=tool_calls,
+                    tool_results=tool_results,
+                    usage=usage,
+                    error=state.error,
+                ),
+            )
+
+            if prepared.should_update:
+                self._update_tape(
+                    prepared,
+                    text or None,
+                    tool_calls=tool_calls or None,
+                    tool_results=tool_results or None,
+                    error=state.error,
+                    response=response,
+                    provider=provider_name,
+                    model=model_id,
+                    usage=usage,
+                )
+
+        return AsyncStreamEvents(_iterator(), state=state)
 
     def _execute_tool_calls(
         self,
@@ -1467,18 +1599,39 @@ class ChatClient:
             return []
         if not prepared.toolset.runnable:
             raise ErrorPayload(ErrorKind.TOOL, "No runnable tools are available.")
-        tool_context = ToolContext(
+        execution = self._tool_executor.execute(
+            tool_calls,
+            tools=prepared.toolset.runnable,
+            context=self._make_tool_context(prepared, provider_name, model_id),
+        )
+        return execution.tool_results
+
+    async def _execute_tool_calls_async(
+        self,
+        prepared: PreparedChat,
+        tool_calls: list[dict[str, Any]],
+        provider_name: str,
+        model_id: str,
+    ) -> list[Any]:
+        if not tool_calls:
+            return []
+        if not prepared.toolset.runnable:
+            raise ErrorPayload(ErrorKind.TOOL, "No runnable tools are available.")
+        execution = await self._tool_executor.execute_async(
+            tool_calls,
+            tools=prepared.toolset.runnable,
+            context=self._make_tool_context(prepared, provider_name, model_id),
+        )
+        return execution.tool_results
+
+    @staticmethod
+    def _make_tool_context(prepared: PreparedChat, provider_name: str, model_id: str) -> ToolContext:
+        return ToolContext(
             tape=prepared.tape,
             run_id=prepared.run_id,
             meta={"provider": provider_name, "model": model_id},
             state={},
         )
-        execution = self._tool_executor.execute(
-            tool_calls,
-            tools=prepared.toolset.runnable,
-            context=tool_context,
-        )
-        return execution.tool_results
 
     @staticmethod
     def _extract_text(response: Any) -> str:

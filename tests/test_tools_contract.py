@@ -77,3 +77,40 @@ def test_convert_tools_rejects_schema_only_tools() -> None:
 
     with pytest.raises(TypeError):
         Tool.convert_tools([schema_only])
+
+
+def test_sync_execute_rejects_async_handler() -> None:
+    @tool
+    async def async_echo(text: str) -> str:
+        return text
+
+    executor = ToolExecutor()
+    with pytest.raises(ErrorPayload) as exc_info:
+        executor.execute(
+            [{"function": {"name": "async_echo", "arguments": {"text": "hello"}}}],
+            tools=[async_echo],
+        )
+    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
+    assert "execute_async" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_execute_async_supports_async_handler() -> None:
+    @tool
+    async def async_echo(text: str) -> str:
+        return f"async:{text}"
+
+    @tool
+    def sync_echo(text: str) -> str:
+        return f"sync:{text}"
+
+    executor = ToolExecutor()
+    execution = await executor.execute_async(
+        [
+            {"function": {"name": "async_echo", "arguments": {"text": "hello"}}},
+            {"function": {"name": "sync_echo", "arguments": {"text": "world"}}},
+        ],
+        tools=[async_echo, sync_echo],
+    )
+    assert execution.error is None
+    assert execution.tool_results == ["async:hello", "sync:world"]

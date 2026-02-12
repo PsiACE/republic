@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 from typing import Any
 
@@ -23,9 +24,7 @@ class ToolExecutor:
         *,
         context: ToolContext | None = None,
     ) -> ToolExecution:
-        tool_calls = self._normalize_response(response)
-
-        tool_map = self._build_tool_map(tools)
+        tool_calls, tool_map = self._prepare_execution(response, tools)
         if not tool_map:
             if tool_calls:
                 raise ErrorPayload(ErrorKind.TOOL, "No runnable tools are available.")
@@ -37,12 +36,39 @@ class ToolExecutor:
 
         return ToolExecution(tool_calls=tool_calls, tool_results=results)
 
-    def _handle_tool_response(
+    async def execute_async(
+        self,
+        response: list[dict[str, Any]] | dict[str, Any] | str,
+        tools: ToolInput = None,
+        *,
+        context: ToolContext | None = None,
+    ) -> ToolExecution:
+        tool_calls, tool_map = self._prepare_execution(response, tools)
+        if not tool_map:
+            if tool_calls:
+                raise ErrorPayload(ErrorKind.TOOL, "No runnable tools are available.")
+            return ToolExecution(tool_calls=[], tool_results=[])
+
+        results: list[Any] = []
+        for tool_response in tool_calls:
+            results.append(await self._handle_tool_response_async(tool_response, tool_map, context))
+
+        return ToolExecution(tool_calls=tool_calls, tool_results=results)
+
+    def _prepare_execution(
+        self,
+        response: list[dict[str, Any]] | dict[str, Any] | str,
+        tools: ToolInput,
+    ) -> tuple[list[dict[str, Any]], dict[str, Tool]]:
+        tool_calls = self._normalize_response(response)
+        tool_map = self._build_tool_map(tools)
+        return tool_calls, tool_map
+
+    def _resolve_tool_call(
         self,
         tool_response: Any,
         tool_map: dict[str, Tool],
-        context: ToolContext | None,
-    ) -> Any:
+    ) -> tuple[str, Tool, dict[str, Any]]:
         if not isinstance(tool_response, dict):
             raise ErrorPayload(ErrorKind.INVALID_INPUT, "Each tool call must be an object.")
         tool_name = tool_response.get("function", {}).get("name")
@@ -53,14 +79,42 @@ class ToolExecutor:
             raise ErrorPayload(ErrorKind.TOOL, f"Unknown tool name: {tool_name}.")
         tool_args = tool_response.get("function", {}).get("arguments", {})
         tool_args = self._normalize_tool_args(tool_name, tool_args)
+        return tool_name, tool_obj, tool_args
+
+    def _invoke_tool(
+        self,
+        *,
+        tool_name: str,
+        tool_obj: Tool,
+        tool_args: dict[str, Any],
+        context: ToolContext | None,
+    ) -> Any:
+        if tool_obj.context:
+            if context is None:
+                raise ErrorPayload(
+                    ErrorKind.INVALID_INPUT, f"Tool '{tool_name}' requires context but none was provided."
+                )
+            return tool_obj.run(context=context, **tool_args)
+        return tool_obj.run(**tool_args)
+
+    def _handle_tool_response(
+        self,
+        tool_response: Any,
+        tool_map: dict[str, Tool],
+        context: ToolContext | None,
+    ) -> Any:
+        tool_name, tool_obj, tool_args = self._resolve_tool_call(tool_response, tool_map)
         try:
-            if tool_obj.context:
-                if context is None:
-                    raise ErrorPayload(  # noqa: TRY301
-                        ErrorKind.INVALID_INPUT, f"Tool '{tool_name}' requires context but none was provided."
-                    )
-                return tool_obj.run(context=context, **tool_args)
-            return tool_obj.run(**tool_args)
+            result = self._invoke_tool(
+                tool_name=tool_name,
+                tool_obj=tool_obj,
+                tool_args=tool_args,
+                context=context,
+            )
+            if inspect.isawaitable(result):
+                if inspect.iscoroutine(result):
+                    result.close()
+                self._raise_async_execute_error(tool_name)
         except ErrorPayload:
             raise
         except ValidationError as exc:
@@ -75,6 +129,47 @@ class ToolExecutor:
                 f"Tool '{tool_name}' execution failed.",
                 details={"error": repr(exc)},
             ) from exc
+        else:
+            return result
+
+    async def _handle_tool_response_async(
+        self,
+        tool_response: Any,
+        tool_map: dict[str, Tool],
+        context: ToolContext | None,
+    ) -> Any:
+        tool_name, tool_obj, tool_args = self._resolve_tool_call(tool_response, tool_map)
+        try:
+            result = self._invoke_tool(
+                tool_name=tool_name,
+                tool_obj=tool_obj,
+                tool_args=tool_args,
+                context=context,
+            )
+            if inspect.isawaitable(result):
+                return await result
+        except ErrorPayload:
+            raise
+        except ValidationError as exc:
+            raise ErrorPayload(
+                ErrorKind.INVALID_INPUT,
+                f"Tool '{tool_name}' argument validation failed.",
+                details={"errors": exc.errors()},
+            ) from exc
+        except Exception as exc:
+            raise ErrorPayload(
+                ErrorKind.TOOL,
+                f"Tool '{tool_name}' execution failed.",
+                details={"error": repr(exc)},
+            ) from exc
+        else:
+            return result
+
+    def _raise_async_execute_error(self, tool_name: str) -> None:
+        raise ErrorPayload(
+            ErrorKind.INVALID_INPUT,
+            f"Tool '{tool_name}' is async; use execute_async() instead of execute().",
+        )
 
     def _normalize_response(
         self,
