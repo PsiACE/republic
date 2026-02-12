@@ -31,14 +31,16 @@ class ToolExecutor:
             return ToolExecution(tool_calls=[], tool_results=[])
 
         results: list[Any] = []
+        error: ErrorPayload | None = None
         for tool_response in tool_calls:
             try:
                 result = self._handle_tool_response(tool_response, tool_map, context)
             except ErrorPayload as exc:
+                error = exc
                 result = exc.as_dict()
             results.append(result)
 
-        return ToolExecution(tool_calls=tool_calls, tool_results=results)
+        return ToolExecution(tool_calls=tool_calls, tool_results=results, error=error)
 
     async def execute_async(
         self,
@@ -54,14 +56,16 @@ class ToolExecutor:
             return ToolExecution(tool_calls=[], tool_results=[])
 
         results: list[Any] = []
+        error: ErrorPayload | None = None
         for tool_response in tool_calls:
             try:
                 result = await self._handle_tool_response_async(tool_response, tool_map, context)
             except ErrorPayload as exc:
+                error = exc
                 result = exc.as_dict()
             results.append(result)
 
-        return ToolExecution(tool_calls=tool_calls, tool_results=results)
+        return ToolExecution(tool_calls=tool_calls, tool_results=results, error=error)
 
     def _prepare_execution(
         self,

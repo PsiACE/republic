@@ -27,7 +27,8 @@ def test_tool_from_model_validates_payload() -> None:
         [{"function": {"name": "reminder", "arguments": {"missing": "value"}}}],
         tools=[reminder_tool],
     )
-    assert failed.error is None
+    assert failed.error is not None
+    assert failed.error.kind == ErrorKind.INVALID_INPUT
     assert len(failed.tool_results) == 1
     assert failed.tool_results[0]["kind"] == ErrorKind.INVALID_INPUT.value
 
@@ -42,7 +43,8 @@ def test_context_tool_requires_context() -> None:
     calls = [{"function": {"name": "write_note", "arguments": {"title": "hello"}}}]
 
     failed = executor.execute(calls, tools=[write_note])
-    assert failed.error is None
+    assert failed.error is not None
+    assert failed.error.kind == ErrorKind.INVALID_INPUT
     assert len(failed.tool_results) == 1
     assert failed.tool_results[0]["kind"] == ErrorKind.INVALID_INPUT.value
 
@@ -90,7 +92,8 @@ def test_sync_execute_rejects_async_handler() -> None:
         [{"function": {"name": "async_echo", "arguments": {"text": "hello"}}}],
         tools=[async_echo],
     )
-    assert failed.error is None
+    assert failed.error is not None
+    assert failed.error.kind == ErrorKind.INVALID_INPUT
     assert len(failed.tool_results) == 1
     assert failed.tool_results[0]["kind"] == ErrorKind.INVALID_INPUT.value
     assert "execute_async" in failed.tool_results[0]["message"]
