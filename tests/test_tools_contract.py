@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 from republic import Tool, ToolContext, tool, tool_from_model
 from republic.core.errors import ErrorKind
-from republic.core.results import ErrorPayload
 from republic.tools import ToolExecutor, normalize_tools
 
 
@@ -24,12 +23,13 @@ def test_tool_from_model_validates_payload() -> None:
     assert ok.error is None
     assert ok.tool_results == [{"title": "buy milk"}]
 
-    with pytest.raises(ErrorPayload) as exc_info:
-        executor.execute(
-            [{"function": {"name": "reminder", "arguments": {"missing": "value"}}}],
-            tools=[reminder_tool],
-        )
-    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
+    failed = executor.execute(
+        [{"function": {"name": "reminder", "arguments": {"missing": "value"}}}],
+        tools=[reminder_tool],
+    )
+    assert failed.error is None
+    assert len(failed.tool_results) == 1
+    assert failed.tool_results[0]["kind"] == ErrorKind.INVALID_INPUT.value
 
 
 def test_context_tool_requires_context() -> None:
@@ -41,9 +41,10 @@ def test_context_tool_requires_context() -> None:
     executor = ToolExecutor()
     calls = [{"function": {"name": "write_note", "arguments": {"title": "hello"}}}]
 
-    with pytest.raises(ErrorPayload) as exc_info:
-        executor.execute(calls, tools=[write_note])
-    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
+    failed = executor.execute(calls, tools=[write_note])
+    assert failed.error is None
+    assert len(failed.tool_results) == 1
+    assert failed.tool_results[0]["kind"] == ErrorKind.INVALID_INPUT.value
 
     ctx = ToolContext(tape="ops", run_id="run-1")
     ok = executor.execute(calls, tools=[write_note], context=ctx)
@@ -85,13 +86,14 @@ def test_sync_execute_rejects_async_handler() -> None:
         return text
 
     executor = ToolExecutor()
-    with pytest.raises(ErrorPayload) as exc_info:
-        executor.execute(
-            [{"function": {"name": "async_echo", "arguments": {"text": "hello"}}}],
-            tools=[async_echo],
-        )
-    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
-    assert "execute_async" in exc_info.value.message
+    failed = executor.execute(
+        [{"function": {"name": "async_echo", "arguments": {"text": "hello"}}}],
+        tools=[async_echo],
+    )
+    assert failed.error is None
+    assert len(failed.tool_results) == 1
+    assert failed.tool_results[0]["kind"] == ErrorKind.INVALID_INPUT.value
+    assert "execute_async" in failed.tool_results[0]["message"]
 
 
 @pytest.mark.asyncio

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Any
+from typing import Any, NoReturn
 
 from pydantic import ValidationError
 
@@ -32,7 +32,11 @@ class ToolExecutor:
 
         results: list[Any] = []
         for tool_response in tool_calls:
-            results.append(self._handle_tool_response(tool_response, tool_map, context))
+            try:
+                result = self._handle_tool_response(tool_response, tool_map, context)
+            except ErrorPayload as exc:
+                result = exc.as_dict()
+            results.append(result)
 
         return ToolExecution(tool_calls=tool_calls, tool_results=results)
 
@@ -51,7 +55,11 @@ class ToolExecutor:
 
         results: list[Any] = []
         for tool_response in tool_calls:
-            results.append(await self._handle_tool_response_async(tool_response, tool_map, context))
+            try:
+                result = await self._handle_tool_response_async(tool_response, tool_map, context)
+            except ErrorPayload as exc:
+                result = exc.as_dict()
+            results.append(result)
 
         return ToolExecution(tool_calls=tool_calls, tool_results=results)
 
@@ -165,7 +173,7 @@ class ToolExecutor:
         else:
             return result
 
-    def _raise_async_execute_error(self, tool_name: str) -> None:
+    def _raise_async_execute_error(self, tool_name: str) -> NoReturn:
         raise ErrorPayload(
             ErrorKind.INVALID_INPUT,
             f"Tool '{tool_name}' is async; use execute_async() instead of execute().",
