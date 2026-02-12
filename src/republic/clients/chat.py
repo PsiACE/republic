@@ -6,7 +6,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
-from typing import Any
+from typing import Any, NoReturn
 
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
@@ -395,7 +395,7 @@ class ChatClient:
         if False:
             yield ""
 
-    def _raise_with_tape(self, prepared: PreparedChat, error: ErrorPayload) -> None:
+    def _raise_with_tape(self, prepared: PreparedChat, error: ErrorPayload) -> NoReturn:
         if prepared.should_update:
             self._update_tape(prepared, None, error=error)
         raise error
