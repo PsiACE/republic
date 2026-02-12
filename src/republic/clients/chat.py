@@ -5,7 +5,8 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
-from typing import Any
+from functools import partial
+from typing import Any, NoReturn
 
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
@@ -16,7 +17,6 @@ from republic.core.results import (
     StreamEvent,
     StreamEvents,
     StreamState,
-    StructuredOutput,
     TextStream,
     ToolAutoResult,
 )
@@ -188,17 +188,16 @@ class ChatClient:
         messages: list[MessageInput] | None,
         system_prompt: str | None,
         tape: str | None,
-    ) -> ErrorPayload | None:
+    ) -> None:
         if prompt is not None and messages is not None:
-            return ErrorPayload(ErrorKind.INVALID_INPUT, "Provide either prompt or messages, not both.")
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, "Provide either prompt or messages, not both.")
         if prompt is None and messages is None:
-            return ErrorPayload(ErrorKind.INVALID_INPUT, "Either prompt or messages is required.")
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, "Either prompt or messages is required.")
         if messages is not None and (system_prompt is not None or tape is not None):
-            return ErrorPayload(
+            raise ErrorPayload(
                 ErrorKind.INVALID_INPUT,
                 "system_prompt and tape are not supported with messages input.",
             )
-        return None
 
     def _prepare_messages(
         self,
@@ -207,22 +206,20 @@ class ChatClient:
         tape: str | None,
         messages: list[MessageInput] | None,
         context: TapeContext | None = None,
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], ErrorPayload | None]:
-        error = self._validate_chat_input(
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        self._validate_chat_input(
             prompt=prompt,
             messages=messages,
             system_prompt=system_prompt,
             tape=tape,
         )
-        if error is not None:
-            return [], [], error
 
         if messages is not None:
             payload = [dict(message) for message in messages]
-            return payload, [], None
+            return payload, []
 
         if prompt is None:
-            return [], [], ErrorPayload(ErrorKind.INVALID_INPUT, "prompt is required when messages is not provided")
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, "prompt is required when messages is not provided")
 
         user_message = {"role": "user", "content": prompt}
 
@@ -231,16 +228,15 @@ class ChatClient:
             if system_prompt:
                 payload.append({"role": "system", "content": system_prompt})
             payload.append(user_message)
-            return payload, [], None
+            return payload, []
 
-        selection = self._tape.read_messages(tape, context=context)
-        history = selection.messages
+        history = self._tape.read_messages(tape, context=context)
         payload = []
         if system_prompt:
             payload.append({"role": "system", "content": system_prompt})
         payload.extend(history)
         payload.append(user_message)
-        return payload, [user_message], selection.error
+        return payload, [user_message]
 
     def _prepare_request(
         self,
@@ -254,28 +250,29 @@ class ChatClient:
         require_tools: bool = False,
         require_runnable: bool = False,
     ) -> PreparedChat:
-        if require_tools and not tools:
-            tools_error = ErrorPayload(ErrorKind.INVALID_INPUT, "tools are required for this operation.")
+        context_error: ErrorPayload | None = None
+        payload: list[dict[str, Any]] = []
+        new_messages: list[dict[str, Any]] = []
+        try:
+            payload, new_messages = self._prepare_messages(
+                prompt,
+                system_prompt,
+                tape,
+                messages,
+                context=context,
+            )
+            if require_tools and not tools:
+                raise ErrorPayload(ErrorKind.INVALID_INPUT, "tools are required for this operation.")  # noqa: TRY301
+            toolset = self._normalize_tools(tools)
+        except ErrorPayload as exc:
+            context_error = exc
+            toolset = ToolSet([], [])
         else:
-            tools_error = None
-
-        payload, new_messages, context_error = self._prepare_messages(
-            prompt,
-            system_prompt,
-            tape,
-            messages,
-            context=context,
-        )
-        toolset, tool_error = self._normalize_tools(tools)
-        if tools_error is not None and context_error is None:
-            context_error = tools_error
-        if tool_error is not None:
-            context_error = tool_error if context_error is None else context_error
-        if require_runnable:
-            try:
-                toolset.require_runnable()
-            except ValueError as exc:
-                context_error = ErrorPayload(ErrorKind.INVALID_INPUT, str(exc))
+            if require_runnable:
+                try:
+                    toolset.require_runnable()
+                except ValueError as exc:
+                    context_error = ErrorPayload(ErrorKind.INVALID_INPUT, str(exc))
 
         should_update = tape is not None and messages is None
         run_id = uuid.uuid4().hex
@@ -302,10 +299,9 @@ class ChatClient:
         tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
-        on_error: Callable[[ErrorPayload], Any],
     ) -> Any:
         if prepared.context_error is not None:
-            return on_error(prepared.context_error)
+            raise prepared.context_error
         try:
             return self._core.run_chat_sync(
                 messages_payload=prepared.payload,
@@ -320,7 +316,7 @@ class ChatClient:
                 on_response=on_response,
             )
         except RepublicError as exc:
-            return on_error(ErrorPayload(exc.kind, exc.message))
+            raise ErrorPayload(exc.kind, exc.message) from exc
 
     async def _execute_async(
         self,
@@ -334,10 +330,9 @@ class ChatClient:
         tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
-        on_error: Callable[[ErrorPayload], Any],
     ) -> Any:
         if prepared.context_error is not None:
-            return on_error(prepared.context_error)
+            raise prepared.context_error
         try:
             return await self._core.run_chat_async(
                 messages_payload=prepared.payload,
@@ -352,13 +347,13 @@ class ChatClient:
                 on_response=on_response,
             )
         except RepublicError as exc:
-            return on_error(ErrorPayload(exc.kind, exc.message))
+            raise ErrorPayload(exc.kind, exc.message) from exc
 
-    def _normalize_tools(self, tools: ToolInput) -> tuple[ToolSet, ErrorPayload | None]:
+    def _normalize_tools(self, tools: ToolInput) -> ToolSet:
         try:
-            return normalize_tools(tools), None
+            return normalize_tools(tools)
         except (ValueError, TypeError) as exc:
-            return ToolSet([], []), ErrorPayload(ErrorKind.INVALID_INPUT, str(exc))
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, str(exc)) from exc
 
     def _update_tape(
         self,
@@ -400,10 +395,10 @@ class ChatClient:
         if False:
             yield ""
 
-    def _structured_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> StructuredOutput:
+    def _raise_with_tape(self, prepared: PreparedChat, error: ErrorPayload) -> NoReturn:
         if prepared.should_update:
             self._update_tape(prepared, None, error=error)
-        return StructuredOutput(None, error)
+        raise error
 
     def _tool_auto_error_result(self, prepared: PreparedChat, error: ErrorPayload) -> ToolAutoResult:
         if prepared.should_update:
@@ -525,18 +520,20 @@ class ChatClient:
         for idx, call in enumerate(tool_calls):
             events.append(StreamEvent("tool_call", {"index": idx, "call": call}))
 
-        tool_results, tool_error = self._execute_tool_calls(
-            prepared,
-            tool_calls,
-            provider_name,
-            model_id,
-        )
+        tool_results: list[Any] = []
+        try:
+            tool_results = self._execute_tool_calls(
+                prepared,
+                tool_calls,
+                provider_name,
+                model_id,
+            )
+        except ErrorPayload as exc:
+            state.error = exc
+            events.append(StreamEvent("error", exc.as_dict()))
         if tool_results:
             for idx, result in enumerate(tool_results):
                 events.append(StreamEvent("tool_result", {"index": idx, "result": result}))
-        if tool_error is not None:
-            state.error = tool_error
-            events.append(StreamEvent("error", tool_error.as_dict()))
 
         if not parts and not tool_calls and state.error is None:
             empty = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
@@ -620,7 +617,7 @@ class ChatClient:
         provider_name: str,
         model_id: str,
         attempt: int,
-    ) -> StructuredOutput | object:
+    ) -> str | object:
         text = self._extract_text(response)
         if text:
             if prepared.should_update:
@@ -631,7 +628,7 @@ class ChatClient:
                     provider=provider_name,
                     model=model_id,
                 )
-            return StructuredOutput(text, None)
+            return text
         empty_error = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
         self._core.log_error(empty_error, provider_name, model_id, attempt)
         return self._core.RETRY
@@ -643,7 +640,7 @@ class ChatClient:
         provider_name: str,
         model_id: str,
         attempt: int,
-    ) -> StructuredOutput:
+    ) -> list[dict[str, Any]]:
         calls = self._extract_tool_calls(response)
         if prepared.should_update:
             self._update_tape(
@@ -655,7 +652,7 @@ class ChatClient:
                 provider=provider_name,
                 model=model_id,
             )
-        return StructuredOutput(calls, None)
+        return calls
 
     def _handle_tools_auto_response(
         self,
@@ -679,32 +676,14 @@ class ChatClient:
                 context=tool_context,
             )
             if prepared.should_update:
-                if execution.error is not None:
-                    self._update_tape(
-                        prepared,
-                        None,
-                        tool_calls=execution.tool_calls,
-                        tool_results=execution.tool_results,
-                        error=execution.error,
-                        response=response,
-                        provider=provider_name,
-                        model=model_id,
-                    )
-                else:
-                    self._update_tape(
-                        prepared,
-                        None,
-                        tool_calls=execution.tool_calls,
-                        tool_results=execution.tool_results,
-                        response=response,
-                        provider=provider_name,
-                        model=model_id,
-                    )
-            if execution.error is not None:
-                return ToolAutoResult.error_result(
-                    execution.error,
+                self._update_tape(
+                    prepared,
+                    None,
                     tool_calls=execution.tool_calls,
                     tool_results=execution.tool_results,
+                    response=response,
+                    provider=provider_name,
+                    model=model_id,
                 )
             return ToolAutoResult.tools_result(execution.tool_calls, execution.tool_results)
 
@@ -736,7 +715,7 @@ class ChatClient:
         tape: str | None = None,
         context: TapeContext | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> str:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -745,24 +724,20 @@ class ChatClient:
             context=context,
             tools=None,
         )
-        return self._execute_sync(
-            prepared,
-            tools_payload=None,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            tool_count=0,
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._handle_create_response(
+        try:
+            return self._execute_sync(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._structured_error_result(prepared, error),
-        )
+                tools_payload=None,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=False,
+                tool_count=0,
+                kwargs=kwargs,
+                on_response=partial(self._handle_create_response, prepared),
+            )
+        except ErrorPayload as error:
+            self._raise_with_tape(prepared, error)
 
     def tool_calls(
         self,
@@ -777,7 +752,7 @@ class ChatClient:
         context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> list[dict[str, Any]]:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -787,24 +762,20 @@ class ChatClient:
             tools=tools,
             require_tools=True,
         )
-        return self._execute_sync(
-            prepared,
-            tools_payload=prepared.toolset.payload,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            tool_count=len(prepared.toolset.payload or []),
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._handle_tool_calls_response(
+        try:
+            return self._execute_sync(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._structured_error_result(prepared, error),
-        )
+                tools_payload=prepared.toolset.payload,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=False,
+                tool_count=len(prepared.toolset.payload or []),
+                kwargs=kwargs,
+                on_response=partial(self._handle_tool_calls_response, prepared),
+            )
+        except ErrorPayload as error:
+            self._raise_with_tape(prepared, error)
 
     def run_tools(
         self,
@@ -830,24 +801,20 @@ class ChatClient:
             require_tools=True,
             require_runnable=True,
         )
-        return self._execute_sync(
-            prepared,
-            tools_payload=prepared.toolset.payload,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            tool_count=len(prepared.toolset.payload or []),
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._handle_tools_auto_response(
+        try:
+            return self._execute_sync(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._tool_auto_error_result(prepared, error),
-        )
+                tools_payload=prepared.toolset.payload,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=False,
+                tool_count=len(prepared.toolset.payload or []),
+                kwargs=kwargs,
+                on_response=partial(self._handle_tools_auto_response, prepared),
+            )
+        except ErrorPayload as error:
+            return self._tool_auto_error_result(prepared, error)
 
     async def chat_async(
         self,
@@ -861,7 +828,7 @@ class ChatClient:
         tape: str | None = None,
         context: TapeContext | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> str:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -870,24 +837,20 @@ class ChatClient:
             context=context,
             tools=None,
         )
-        return await self._execute_async(
-            prepared,
-            tools_payload=None,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            tool_count=0,
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._handle_create_response(
+        try:
+            return await self._execute_async(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._structured_error_result(prepared, error),
-        )
+                tools_payload=None,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=False,
+                tool_count=0,
+                kwargs=kwargs,
+                on_response=partial(self._handle_create_response, prepared),
+            )
+        except ErrorPayload as error:
+            self._raise_with_tape(prepared, error)
 
     async def tool_calls_async(
         self,
@@ -902,7 +865,7 @@ class ChatClient:
         context: TapeContext | None = None,
         tools: ToolInput = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> list[dict[str, Any]]:
         prepared = self._prepare_request(
             prompt=prompt,
             system_prompt=system_prompt,
@@ -912,24 +875,20 @@ class ChatClient:
             tools=tools,
             require_tools=True,
         )
-        return await self._execute_async(
-            prepared,
-            tools_payload=prepared.toolset.payload,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            tool_count=len(prepared.toolset.payload or []),
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._handle_tool_calls_response(
+        try:
+            return await self._execute_async(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._structured_error_result(prepared, error),
-        )
+                tools_payload=prepared.toolset.payload,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=False,
+                tool_count=len(prepared.toolset.payload or []),
+                kwargs=kwargs,
+                on_response=partial(self._handle_tool_calls_response, prepared),
+            )
+        except ErrorPayload as error:
+            self._raise_with_tape(prepared, error)
 
     async def run_tools_async(
         self,
@@ -955,24 +914,20 @@ class ChatClient:
             require_tools=True,
             require_runnable=True,
         )
-        return await self._execute_async(
-            prepared,
-            tools_payload=prepared.toolset.payload,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=False,
-            tool_count=len(prepared.toolset.payload or []),
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._handle_tools_auto_response(
+        try:
+            return await self._execute_async(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._tool_auto_error_result(prepared, error),
-        )
+                tools_payload=prepared.toolset.payload,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=False,
+                tool_count=len(prepared.toolset.payload or []),
+                kwargs=kwargs,
+                on_response=partial(self._handle_tools_auto_response, prepared),
+            )
+        except ErrorPayload as error:
+            return self._tool_auto_error_result(prepared, error)
 
     def stream(
         self,
@@ -995,24 +950,20 @@ class ChatClient:
             context=context,
             tools=None,
         )
-        return self._execute_sync(
-            prepared,
-            tools_payload=None,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            tool_count=0,
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._build_text_stream(
+        try:
+            return self._execute_sync(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._stream_error_result(prepared, error),
-        )
+                tools_payload=None,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=True,
+                tool_count=0,
+                kwargs=kwargs,
+                on_response=partial(self._build_text_stream, prepared),
+            )
+        except ErrorPayload as error:
+            return self._stream_error_result(prepared, error)
 
     async def stream_async(
         self,
@@ -1035,24 +986,20 @@ class ChatClient:
             context=context,
             tools=None,
         )
-        return await self._execute_async(
-            prepared,
-            tools_payload=None,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            tool_count=0,
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._build_async_text_stream(
+        try:
+            return await self._execute_async(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._stream_async_error_result(prepared, error),
-        )
+                tools_payload=None,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=True,
+                tool_count=0,
+                kwargs=kwargs,
+                on_response=partial(self._build_async_text_stream, prepared),
+            )
+        except ErrorPayload as error:
+            return self._stream_async_error_result(prepared, error)
 
     def stream_events(
         self,
@@ -1076,24 +1023,20 @@ class ChatClient:
             context=context,
             tools=tools,
         )
-        return self._execute_sync(
-            prepared,
-            tools_payload=prepared.toolset.payload or None,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            tool_count=len(prepared.toolset.payload or []),
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._build_event_stream(
+        try:
+            return self._execute_sync(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._event_error_result(prepared, error),
-        )
+                tools_payload=prepared.toolset.payload or None,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=True,
+                tool_count=len(prepared.toolset.payload or []),
+                kwargs=kwargs,
+                on_response=partial(self._build_event_stream, prepared),
+            )
+        except ErrorPayload as error:
+            return self._event_error_result(prepared, error)
 
     async def stream_events_async(
         self,
@@ -1117,24 +1060,20 @@ class ChatClient:
             context=context,
             tools=tools,
         )
-        return await self._execute_async(
-            prepared,
-            tools_payload=prepared.toolset.payload or None,
-            model=model,
-            provider=provider,
-            max_tokens=max_tokens,
-            stream=True,
-            tool_count=len(prepared.toolset.payload or []),
-            kwargs=kwargs,
-            on_response=lambda response, provider_name, model_id, attempt: self._build_async_event_stream(
+        try:
+            return await self._execute_async(
                 prepared,
-                response,
-                provider_name,
-                model_id,
-                attempt,
-            ),
-            on_error=lambda error: self._event_async_error_result(prepared, error),
-        )
+                tools_payload=prepared.toolset.payload or None,
+                model=model,
+                provider=provider,
+                max_tokens=max_tokens,
+                stream=True,
+                tool_count=len(prepared.toolset.payload or []),
+                kwargs=kwargs,
+                on_response=partial(self._build_async_event_stream, prepared),
+            )
+        except ErrorPayload as error:
+            return self._event_async_error_result(prepared, error)
 
     def _build_text_stream(
         self,
@@ -1450,12 +1389,16 @@ class ChatClient:
         text = self._extract_text(response)
         tool_calls = self._extract_tool_calls(response)
         usage = self._extract_usage(response)
-        tool_results, tool_error = self._execute_tool_calls(prepared, tool_calls, provider_name, model_id)
-        if not text and not tool_calls and tool_error is None:
+        state = StreamState(usage=usage)
+        tool_results: list[Any] = []
+        try:
+            tool_results = self._execute_tool_calls(prepared, tool_calls, provider_name, model_id)
+        except ErrorPayload as exc:
+            state.error = exc
+        if not text and not tool_calls and state.error is None:
             empty = RepublicError(ErrorKind.TEMPORARY, f"{provider_name}:{model_id}: empty response")
             self._core.log_error(empty, provider_name, model_id, 0)
-            tool_error = ErrorPayload(empty.kind, empty.message)
-        state = StreamState(error=tool_error, usage=usage)
+            state.error = ErrorPayload(empty.kind, empty.message)
         events: list[StreamEvent] = []
         if text:
             events.append(StreamEvent("text", {"delta": text}))
@@ -1463,8 +1406,8 @@ class ChatClient:
             events.append(StreamEvent("tool_call", {"index": idx, "call": call}))
         for idx, result in enumerate(tool_results):
             events.append(StreamEvent("tool_result", {"index": idx, "result": result}))
-        if tool_error is not None:
-            events.append(StreamEvent("error", tool_error.as_dict()))
+        if state.error is not None:
+            events.append(StreamEvent("error", state.error.as_dict()))
         if usage is not None:
             events.append(StreamEvent("usage", usage))
         events.append(
@@ -1475,7 +1418,7 @@ class ChatClient:
                     tool_calls=tool_calls,
                     tool_results=tool_results,
                     usage=usage,
-                    error=tool_error,
+                    error=state.error,
                 ),
             )
         )
@@ -1485,7 +1428,7 @@ class ChatClient:
                 text or None,
                 tool_calls=tool_calls or None,
                 tool_results=tool_results or None,
-                error=tool_error,
+                error=state.error,
                 response=response,
                 provider=provider_name,
                 model=model_id,
@@ -1519,11 +1462,11 @@ class ChatClient:
         tool_calls: list[dict[str, Any]],
         provider_name: str,
         model_id: str,
-    ) -> tuple[list[Any], ErrorPayload | None]:
+    ) -> list[Any]:
         if not tool_calls:
-            return [], None
+            return []
         if not prepared.toolset.runnable:
-            return [], ErrorPayload(ErrorKind.TOOL, "No runnable tools are available.")
+            raise ErrorPayload(ErrorKind.TOOL, "No runnable tools are available.")
         tool_context = ToolContext(
             tape=prepared.tape,
             run_id=prepared.run_id,
@@ -1535,7 +1478,7 @@ class ChatClient:
             tools=prepared.toolset.runnable,
             context=tool_context,
         )
-        return execution.tool_results, execution.error
+        return execution.tool_results
 
     @staticmethod
     def _extract_text(response: Any) -> str:

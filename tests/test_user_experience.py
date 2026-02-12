@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from republic import LLM, tool
 from republic.core.errors import ErrorKind
+from republic.core.results import ErrorPayload
 
 from .fakes import make_chunk, make_response, make_tool_call
 
 
-def test_chat_retries_and_returns_structured_output(fake_anyllm) -> None:
+def test_chat_retries_and_returns_text(fake_anyllm) -> None:
     client = fake_anyllm.ensure("openai")
     client.queue_completion(RuntimeError("temporary failure"), make_response(text="ready"))
 
@@ -20,9 +23,7 @@ def test_chat_retries_and_returns_structured_output(fake_anyllm) -> None:
     )
 
     out = llm.chat("Reply with ready", max_tokens=8)
-
-    assert out.error is None
-    assert out.value == "ready"
+    assert out == "ready"
     assert len(client.calls) == 2
 
 
@@ -42,9 +43,7 @@ def test_chat_uses_fallback_model(fake_anyllm) -> None:
     )
 
     out = llm.chat("Ping")
-
-    assert out.error is None
-    assert out.value == "fallback ok"
+    assert out == "fallback ok"
     assert len(primary.calls) == 1
     assert len(fallback.calls) == 1
 
@@ -69,9 +68,7 @@ def test_chat_fallbacks_on_auth_error(fake_anyllm) -> None:
     )
 
     out = llm.chat("Ping")
-
-    assert out.error is None
-    assert out.value == "fallback ok"
+    assert out == "fallback ok"
     assert len(primary.calls) == 1
     assert len(fallback.calls) == 1
 
@@ -96,9 +93,7 @@ def test_chat_fallbacks_on_rate_limit_like_error(fake_anyllm) -> None:
     )
 
     out = llm.chat("Ping")
-
-    assert out.error is None
-    assert out.value == "fallback ok"
+    assert out == "fallback ok"
     assert len(primary.calls) == 1
     assert len(fallback.calls) == 1
 
@@ -110,17 +105,16 @@ def test_tape_requires_anchor_then_records_full_run(fake_anyllm) -> None:
     llm = LLM(model="openai:gpt-4o-mini", api_key="dummy")
     tape = llm.tape("ops")
 
-    missing_anchor = llm.chat("Investigate DB timeout", tape="ops")
-    assert missing_anchor.error is not None
-    assert missing_anchor.error.kind == ErrorKind.NOT_FOUND
+    with pytest.raises(ErrorPayload) as exc_info:
+        llm.chat("Investigate DB timeout", tape="ops")
+    assert exc_info.value.kind == ErrorKind.NOT_FOUND
     assert len(client.calls) == 0
 
     tape.handoff("incident_42", state={"owner": "tier1"})
     first = llm.chat("Investigate DB timeout", tape="ops")
     second = llm.chat("Include rollback criteria", tape="ops")
-
-    assert first.error is None
-    assert second.error is None
+    assert first == "step one"
+    assert second == "step two"
 
     second_messages = client.calls[-1]["messages"]
     assert [message["role"] for message in second_messages] == ["user", "assistant", "user"]
@@ -147,9 +141,8 @@ def test_tape_chat_shortcuts_bind_current_tape(fake_anyllm) -> None:
 
     first = tape.chat("Investigate DB timeout")
     second = tape.chat("Include rollback criteria")
-
-    assert first.error is None
-    assert second.error is None
+    assert first == "step one"
+    assert second == "step two"
 
     second_messages = client.calls[-1]["messages"]
     assert [message["role"] for message in second_messages] == ["user", "assistant", "user"]
@@ -235,17 +228,14 @@ def test_text_shortcuts_and_embeddings_share_the_same_facade(fake_anyllm) -> Non
     llm = LLM(model="openai:gpt-4o-mini", api_key="dummy")
 
     decision = llm.if_("The service is down", "Should we page on-call?")
-    assert decision.error is None
-    assert decision.value is True
+    assert decision is True
 
     label = llm.classify("Need invoice support", ["support", "sales"])
-    assert label.error is None
-    assert label.value == "support"
+    assert label == "support"
 
-    invalid_label = llm.classify("Unknown intent", ["support", "sales"])
-    assert invalid_label.error is not None
-    assert invalid_label.error.kind == ErrorKind.INVALID_INPUT
+    with pytest.raises(ErrorPayload) as exc_info:
+        llm.classify("Unknown intent", ["support", "sales"])
+    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
 
     embedding = llm.embed("incident summary")
-    assert embedding.error is None
-    assert embedding.value == {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
+    assert embedding == {"data": [{"embedding": [0.1, 0.2, 0.3]}]}

@@ -32,17 +32,11 @@ class TapeContext:
     select: Callable[[Sequence[TapeEntry], TapeContext], list[dict[str, Any]]] | None = None
 
 
-@dataclass(frozen=True)
-class ContextSelection:
-    messages: list[dict[str, Any]]
-    error: ErrorPayload | None = None
-
-
-def build_messages(entries: Sequence[TapeEntry], context: TapeContext) -> ContextSelection:
-    selected_entries, error = _slice_after_anchor(entries, context.anchor)
+def build_messages(entries: Sequence[TapeEntry], context: TapeContext) -> list[dict[str, Any]]:
+    selected_entries = _slice_after_anchor(entries, context.anchor)
     if context.select is not None:
-        return ContextSelection(context.select(selected_entries, context), error=error)
-    return ContextSelection(_default_messages(selected_entries), error=error)
+        return context.select(selected_entries, context)
+    return _default_messages(selected_entries)
 
 
 def _default_messages(entries: Sequence[TapeEntry]) -> list[dict[str, Any]]:
@@ -60,9 +54,9 @@ def _default_messages(entries: Sequence[TapeEntry]) -> list[dict[str, Any]]:
 def _slice_after_anchor(
     entries: Sequence[TapeEntry],
     anchor: AnchorSelector,
-) -> tuple[Sequence[TapeEntry], ErrorPayload | None]:
+) -> Sequence[TapeEntry]:
     if anchor is None:
-        return entries, None
+        return entries
 
     anchor_name = None if anchor is LAST_ANCHOR else anchor
     start_index = 0
@@ -79,11 +73,11 @@ def _slice_after_anchor(
 
     if not found:
         if anchor_name is None:
-            return (), ErrorPayload(ErrorKind.NOT_FOUND, "No anchors found in tape.")
-        return (), ErrorPayload(
+            raise ErrorPayload(ErrorKind.NOT_FOUND, "No anchors found in tape.")
+        raise ErrorPayload(
             ErrorKind.NOT_FOUND,
             f"Anchor '{anchor_name}' was not found.",
             details={"anchor": anchor_name},
         )
 
-    return entries[start_index:], None
+    return entries[start_index:]

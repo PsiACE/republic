@@ -6,7 +6,7 @@ from typing import Any
 
 from republic.core.errors import ErrorKind
 from republic.core.execution import LLMCore
-from republic.core.results import ErrorPayload, StructuredOutput
+from republic.core.results import ErrorPayload
 
 
 class InternalOps:
@@ -38,16 +38,14 @@ class InternalOps:
         model: str | None = None,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name, model_id = self._resolve_provider_model(model, provider)
         client = self._core.get_client(provider_name)
         try:
             value = client.responses(model=model_id, input_data=input_data, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None, self._error(exc, provider=provider_name, model=model_id, operation="responses")
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=model_id, operation="responses") from exc
+        return value
 
     async def responses_async(
         self,
@@ -56,40 +54,32 @@ class InternalOps:
         model: str | None = None,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name, model_id = self._resolve_provider_model(model, provider)
         client = self._core.get_client(provider_name)
         try:
             value = await client.aresponses(model=model_id, input_data=input_data, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None, self._error(exc, provider=provider_name, model=model_id, operation="responses")
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=model_id, operation="responses") from exc
+        return value
 
-    def list_models(self, *, provider: str | None = None, **kwargs: Any) -> StructuredOutput:
+    def list_models(self, *, provider: str | None = None, **kwargs: Any) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = client.list_models(**kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="list_models"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="list_models") from exc
+        return value
 
-    async def list_models_async(self, *, provider: str | None = None, **kwargs: Any) -> StructuredOutput:
+    async def list_models_async(self, *, provider: str | None = None, **kwargs: Any) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = await client.alist_models(**kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="list_models"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="list_models") from exc
+        return value
 
     def create_batch(
         self,
@@ -100,7 +90,7 @@ class InternalOps:
         metadata: dict[str, str] | None = None,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
@@ -112,11 +102,8 @@ class InternalOps:
                 **kwargs,
             )
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="create_batch"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="create_batch") from exc
+        return value
 
     async def create_batch_async(
         self,
@@ -127,7 +114,7 @@ class InternalOps:
         metadata: dict[str, str] | None = None,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
@@ -139,11 +126,8 @@ class InternalOps:
                 **kwargs,
             )
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="create_batch"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="create_batch") from exc
+        return value
 
     def retrieve_batch(
         self,
@@ -151,17 +135,14 @@ class InternalOps:
         *,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = client.retrieve_batch(batch_id=batch_id, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="retrieve_batch"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="retrieve_batch") from exc
+        return value
 
     async def retrieve_batch_async(
         self,
@@ -169,17 +150,14 @@ class InternalOps:
         *,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = await client.aretrieve_batch(batch_id=batch_id, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="retrieve_batch"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="retrieve_batch") from exc
+        return value
 
     def cancel_batch(
         self,
@@ -187,17 +165,14 @@ class InternalOps:
         *,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = client.cancel_batch(batch_id=batch_id, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="cancel_batch"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="cancel_batch") from exc
+        return value
 
     async def cancel_batch_async(
         self,
@@ -205,17 +180,14 @@ class InternalOps:
         *,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = await client.acancel_batch(batch_id=batch_id, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="cancel_batch"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="cancel_batch") from exc
+        return value
 
     def list_batches(
         self,
@@ -224,17 +196,14 @@ class InternalOps:
         after: str | None = None,
         limit: int | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = client.list_batches(after=after, limit=limit, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="list_batches"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="list_batches") from exc
+        return value
 
     async def list_batches_async(
         self,
@@ -243,14 +212,11 @@ class InternalOps:
         after: str | None = None,
         limit: int | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name = self._resolve_provider(provider)
         client = self._core.get_client(provider_name)
         try:
             value = await client.alist_batches(after=after, limit=limit, **kwargs)
         except Exception as exc:
-            return StructuredOutput(
-                None,
-                self._error(exc, provider=provider_name, model=None, operation="list_batches"),
-            )
-        return StructuredOutput(value, None)
+            raise self._error(exc, provider=provider_name, model=None, operation="list_batches") from exc
+        return value

@@ -11,6 +11,7 @@ nav:
   - Home: index.md
   - Quickstart: quickstart.md
   - Guides:
+      - Breaking Changes: guides/breaking-changes.md
       - Chat: guides/chat.md
       - Tools: guides/tools.md
       - Tape: guides/tape.md

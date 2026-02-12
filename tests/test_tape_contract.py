@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from republic.core.errors import ErrorKind
+from republic.core.results import ErrorPayload
 from republic.tape.context import LAST_ANCHOR, TapeContext, build_messages
 from republic.tape.entries import TapeEntry
 from republic.tape.query import TapeQuery
@@ -19,16 +22,14 @@ def _seed_entries() -> list[TapeEntry]:
 
 
 def test_build_messages_uses_last_anchor_slice() -> None:
-    selection = build_messages(_seed_entries(), TapeContext(anchor=LAST_ANCHOR))
-    assert selection.error is None
-    assert [message["content"] for message in selection.messages] == ["task 2"]
+    messages = build_messages(_seed_entries(), TapeContext(anchor=LAST_ANCHOR))
+    assert [message["content"] for message in messages] == ["task 2"]
 
 
 def test_build_messages_reports_missing_anchor() -> None:
-    selection = build_messages(_seed_entries(), TapeContext(anchor="missing"))
-    assert selection.messages == []
-    assert selection.error is not None
-    assert selection.error.kind == ErrorKind.NOT_FOUND
+    with pytest.raises(ErrorPayload) as exc_info:
+        build_messages(_seed_entries(), TapeContext(anchor="missing"))
+    assert exc_info.value.kind == ErrorKind.NOT_FOUND
 
 
 def test_query_between_anchors_and_limit() -> None:
@@ -38,7 +39,6 @@ def test_query_between_anchors_and_limit() -> None:
     for entry in _seed_entries():
         store.append(tape, entry)
 
-    result = TapeQuery(tape=tape, store=store).between_anchors("a1", "a2").kinds("message").limit(1).all()
-    assert result.error is None
-    assert len(result.entries) == 1
-    assert result.entries[0].payload["content"] == "task 1"
+    entries = TapeQuery(tape=tape, store=store).between_anchors("a1", "a2").kinds("message").limit(1).all()
+    assert len(entries) == 1
+    assert entries[0].payload["content"] == "task 1"

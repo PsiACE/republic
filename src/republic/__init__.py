@@ -7,24 +7,21 @@ from republic.core.results import (
     StreamEvent,
     StreamEvents,
     StreamState,
-    StructuredOutput,
     TextStream,
     ToolAutoResult,
 )
 from republic.llm import LLM
-from republic.tape import ContextSelection, Tape, TapeContext, TapeEntry, TapeManager, TapeQuery
+from republic.tape import Tape, TapeContext, TapeEntry, TapeManager, TapeQuery
 from republic.tools import Tool, ToolContext, ToolSet, schema_from_model, tool, tool_from_model
 
 __all__ = [
     "LLM",
     "AsyncStreamEvents",
     "AsyncTextStream",
-    "ContextSelection",
     "ErrorPayload",
     "StreamEvent",
     "StreamEvents",
     "StreamState",
-    "StructuredOutput",
     "Tape",
     "TapeContext",
     "TapeEntry",

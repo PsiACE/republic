@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from republic.core.errors import ErrorKind
-from republic.core.results import ErrorPayload, StructuredOutput
+from republic.core.results import ErrorPayload
 from republic.tape.context import TapeContext
 from republic.tools.schema import schema_from_model
 
@@ -65,11 +65,11 @@ class TextClient:
         ).strip()
 
     @staticmethod
-    def _normalize_choices(choices: list[str]) -> tuple[list[str], ErrorPayload | None]:
+    def _normalize_choices(choices: list[str]) -> list[str]:
         if not choices:
-            return [], ErrorPayload(ErrorKind.INVALID_INPUT, "choices must not be empty.")
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, "choices must not be empty.")
         normalized = [choice.strip() for choice in choices]
-        return normalized, None
+        return normalized
 
     def if_(
         self,
@@ -78,13 +78,11 @@ class TextClient:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
+    ) -> bool:
         prompt = self._build_if_prompt(input_text, question)
         tool_schema = schema_from_model(_DecisionOutput, name="if_decision", description="Return a boolean.")
-        response = self._chat.tool_calls(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
-        if response.error is not None:
-            return StructuredOutput(None, response.error)
-        return self._parse_tool_call(response.value, _DecisionOutput, field="value")
+        calls = self._chat.tool_calls(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
+        return self._parse_tool_call(calls, _DecisionOutput, field="value")
 
     async def if_async(
         self,
@@ -93,13 +91,11 @@ class TextClient:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
+    ) -> bool:
         prompt = self._build_if_prompt(input_text, question)
         tool_schema = schema_from_model(_DecisionOutput, name="if_decision", description="Return a boolean.")
-        response = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
-        if response.error is not None:
-            return StructuredOutput(None, response.error)
-        return self._parse_tool_call(response.value, _DecisionOutput, field="value")
+        calls = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
+        return self._parse_tool_call(calls, _DecisionOutput, field="value")
 
     def classify(
         self,
@@ -108,31 +104,20 @@ class TextClient:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
-        normalized, error = self._normalize_choices(choices)
-        if error is not None:
-            return StructuredOutput(None, error)
+    ) -> str:
+        normalized = self._normalize_choices(choices)
         choices_str = ", ".join(normalized)
         prompt = self._build_classify_prompt(input_text, choices_str)
         tool_schema = schema_from_model(_ClassifyDecision, name="classify_decision", description="Return one label.")
-        response = self._chat.tool_calls(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
-        if response.error is not None:
-            return StructuredOutput(None, response.error)
-
-        parsed = self._parse_tool_call(response.value, _ClassifyDecision, field="label")
-        if parsed.error is not None:
-            return parsed
-        label = parsed.value
+        calls = self._chat.tool_calls(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
+        label = self._parse_tool_call(calls, _ClassifyDecision, field="label")
         if label not in normalized:
-            return StructuredOutput(
-                None,
-                ErrorPayload(
-                    ErrorKind.INVALID_INPUT,
-                    "classification label is not in the allowed choices.",
-                    details={"label": label, "choices": normalized},
-                ),
+            raise ErrorPayload(
+                ErrorKind.INVALID_INPUT,
+                "classification label is not in the allowed choices.",
+                details={"label": label, "choices": normalized},
             )
-        return StructuredOutput(label, None)
+        return label
 
     async def classify_async(
         self,
@@ -141,61 +126,44 @@ class TextClient:
         *,
         tape: str | None = None,
         context: TapeContext | None = None,
-    ) -> StructuredOutput:
-        normalized, error = self._normalize_choices(choices)
-        if error is not None:
-            return StructuredOutput(None, error)
+    ) -> str:
+        normalized = self._normalize_choices(choices)
         choices_str = ", ".join(normalized)
         prompt = self._build_classify_prompt(input_text, choices_str)
         tool_schema = schema_from_model(_ClassifyDecision, name="classify_decision", description="Return one label.")
-        response = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
-        if response.error is not None:
-            return StructuredOutput(None, response.error)
-
-        parsed = self._parse_tool_call(response.value, _ClassifyDecision, field="label")
-        if parsed.error is not None:
-            return parsed
-        label = parsed.value
+        calls = await self._chat.tool_calls_async(prompt=prompt, tools=[tool_schema], tape=tape, context=context)
+        label = self._parse_tool_call(calls, _ClassifyDecision, field="label")
         if label not in normalized:
-            return StructuredOutput(
-                None,
-                ErrorPayload(
-                    ErrorKind.INVALID_INPUT,
-                    "classification label is not in the allowed choices.",
-                    details={"label": label, "choices": normalized},
-                ),
+            raise ErrorPayload(
+                ErrorKind.INVALID_INPUT,
+                "classification label is not in the allowed choices.",
+                details={"label": label, "choices": normalized},
             )
-        return StructuredOutput(label, None)
+        return label
 
-    def _parse_tool_call(self, calls: Any, model: type[BaseModel], *, field: str) -> StructuredOutput:
+    def _parse_tool_call(self, calls: Any, model: type[BaseModel], *, field: str) -> Any:
         if not isinstance(calls, list) or not calls:
-            return StructuredOutput(None, ErrorPayload(ErrorKind.INVALID_INPUT, "tool call is missing."))
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, "tool call is missing.")
         call = calls[0]
         args = call.get("function", {}).get("arguments", {})
         if isinstance(args, str):
             try:
                 args = json.loads(args)
             except json.JSONDecodeError as exc:
-                return StructuredOutput(
-                    None,
-                    ErrorPayload(
-                        ErrorKind.INVALID_INPUT,
-                        "tool arguments are not valid JSON.",
-                        details={"error": str(exc)},
-                    ),
-                )
+                raise ErrorPayload(
+                    ErrorKind.INVALID_INPUT,
+                    "tool arguments are not valid JSON.",
+                    details={"error": str(exc)},
+                ) from exc
         if not isinstance(args, dict):
-            return StructuredOutput(None, ErrorPayload(ErrorKind.INVALID_INPUT, "tool arguments must be an object."))
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, "tool arguments must be an object.")
         try:
             payload = model(**args)
         except ValidationError as exc:
-            return StructuredOutput(
-                None,
-                ErrorPayload(
-                    ErrorKind.INVALID_INPUT,
-                    "tool arguments failed validation.",
-                    details={"errors": exc.errors()},
-                ),
-            )
+            raise ErrorPayload(
+                ErrorKind.INVALID_INPUT,
+                "tool arguments failed validation.",
+                details={"errors": exc.errors()},
+            ) from exc
         value = getattr(payload, field, None)
-        return StructuredOutput(value, None)
+        return value

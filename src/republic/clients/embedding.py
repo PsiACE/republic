@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from republic.core.execution import LLMCore
-from republic.core.results import ErrorPayload, StructuredOutput
+from republic.core.results import ErrorPayload
 
 
 class EmbeddingClient:
@@ -27,7 +27,7 @@ class EmbeddingClient:
         model: str | None = None,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name, model_id = self._resolve_provider_model(model, provider)
         client = self._core.get_client(provider_name)
         try:
@@ -35,8 +35,8 @@ class EmbeddingClient:
         except Exception as exc:
             kind = self._core.classify_exception(exc)
             error = self._core.wrap_error(exc, kind, provider_name, model_id)
-            return StructuredOutput(None, ErrorPayload(error.kind, error.message))
-        return StructuredOutput(response, None)
+            raise ErrorPayload(error.kind, error.message) from exc
+        return response
 
     async def embed_async(
         self,
@@ -45,7 +45,7 @@ class EmbeddingClient:
         model: str | None = None,
         provider: str | None = None,
         **kwargs: Any,
-    ) -> StructuredOutput:
+    ) -> Any:
         provider_name, model_id = self._resolve_provider_model(model, provider)
         client = self._core.get_client(provider_name)
         try:
@@ -53,5 +53,5 @@ class EmbeddingClient:
         except Exception as exc:
             kind = self._core.classify_exception(exc)
             error = self._core.wrap_error(exc, kind, provider_name, model_id)
-            return StructuredOutput(None, ErrorPayload(error.kind, error.message))
-        return StructuredOutput(response, None)
+            raise ErrorPayload(error.kind, error.message) from exc
+        return response
