@@ -31,6 +31,11 @@ MessageInput = dict[str, Any]
 ApiMode = Literal["completion", "responses"]
 
 
+class InvalidApiModeError(ValueError):
+    def __init__(self) -> None:
+        super().__init__("api_mode must be 'completion' or 'responses'.")
+
+
 @dataclass(frozen=True)
 class PreparedChat:
     payload: list[dict[str, Any]]
@@ -182,7 +187,7 @@ class ChatClient:
         api_mode: ApiMode = "completion",
     ) -> None:
         if api_mode not in ("completion", "responses"):
-            raise ErrorPayload(ErrorKind.INVALID_INPUT, "api_mode must be 'completion' or 'responses'.")
+            raise InvalidApiModeError
         self._core = core
         self._tool_executor = tool_executor
         self._tape = tape
@@ -397,14 +402,28 @@ class ChatClient:
 
         payload: list[dict[str, Any]] = []
         for tool in tools_payload:
-            function = tool.get("function", {})
-            payload.append({
-                "type": "function",
-                "name": function.get("name"),
-                "description": function.get("description", ""),
-                "parameters": function.get("parameters", {}),
-            })
+            function = tool.get("function")
+            if isinstance(function, dict):
+                converted = {
+                    "type": tool.get("type", "function"),
+                    "name": function.get("name"),
+                    "description": function.get("description", ""),
+                    "parameters": function.get("parameters", {}),
+                }
+                for key in ("strict",):
+                    if key in function:
+                        converted[key] = function[key]
+                payload.append(converted)
+                continue
+
+            payload.append(dict(tool))
         return payload
+
+    @staticmethod
+    def _field(data: Any, key: str, default: Any = None) -> Any:
+        if isinstance(data, dict):
+            return data.get(key, default)
+        return getattr(data, key, default)
 
     def _normalize_tools(self, tools: ToolInput) -> ToolSet:
         try:
@@ -1362,10 +1381,10 @@ class ChatClient:
 
     @staticmethod
     def _extract_chunk_tool_call_deltas(chunk: Any) -> list[Any]:
-        event_type = getattr(chunk, "type", None)
+        event_type = ChatClient._field(chunk, "type")
         if event_type == "response.function_call_arguments.delta":
-            delta = getattr(chunk, "delta", None)
-            item_id = getattr(chunk, "item_id", None)
+            delta = ChatClient._field(chunk, "delta")
+            item_id = ChatClient._field(chunk, "item_id")
             if not isinstance(delta, str) or not item_id:
                 return []
             return [
@@ -1376,9 +1395,9 @@ class ChatClient:
                 )
             ]
         if event_type == "response.function_call_arguments.done":
-            item_id = getattr(chunk, "item_id", None)
-            name = getattr(chunk, "name", None)
-            arguments = getattr(chunk, "arguments", None)
+            item_id = ChatClient._field(chunk, "item_id")
+            name = ChatClient._field(chunk, "name")
+            arguments = ChatClient._field(chunk, "arguments")
             if not item_id or not isinstance(arguments, str):
                 return []
             return [
@@ -1390,30 +1409,30 @@ class ChatClient:
                 )
             ]
 
-        choices = getattr(chunk, "choices", None)
+        choices = ChatClient._field(chunk, "choices")
         if not choices:
             return []
-        delta = getattr(choices[0], "delta", None)
+        delta = ChatClient._field(choices[0], "delta")
         if delta is None:
             return []
-        return getattr(delta, "tool_calls", None) or []
+        return ChatClient._field(delta, "tool_calls") or []
 
     @staticmethod
     def _extract_chunk_text(chunk: Any) -> str:
-        event_type = getattr(chunk, "type", None)
+        event_type = ChatClient._field(chunk, "type")
         if event_type == "response.output_text.delta":
-            delta = getattr(chunk, "delta", None)
+            delta = ChatClient._field(chunk, "delta")
             if isinstance(delta, str):
                 return delta
             return ""
 
-        choices = getattr(chunk, "choices", None)
+        choices = ChatClient._field(chunk, "choices")
         if not choices:
             return ""
-        delta = getattr(choices[0], "delta", None)
+        delta = ChatClient._field(choices[0], "delta")
         if delta is None:
             return ""
-        return getattr(delta, "content", "") or ""
+        return ChatClient._field(delta, "content", "") or ""
 
     def _build_event_stream(
         self,
@@ -1729,20 +1748,16 @@ class ChatClient:
     def _extract_text(response: Any) -> str:
         if isinstance(response, str):
             return response
-        output_text = getattr(response, "output_text", None)
+        output_text = ChatClient._field(response, "output_text")
         if isinstance(output_text, str):
             return output_text
-        if isinstance(response, dict):
-            dict_output_text = response.get("output_text")
-            if isinstance(dict_output_text, str):
-                return dict_output_text
-        choices = getattr(response, "choices", None)
+        choices = ChatClient._field(response, "choices")
         if not choices:
             return ""
-        message = getattr(choices[0], "message", None)
+        message = ChatClient._field(choices[0], "message")
         if message is None:
             return ""
-        return getattr(message, "content", "") or ""
+        return ChatClient._field(message, "content", "") or ""
 
     @staticmethod
     def _extract_responses_tool_calls(output_items: Any) -> list[dict[str, Any]]:
@@ -1751,11 +1766,11 @@ class ChatClient:
 
         calls: list[dict[str, Any]] = []
         for item in output_items:
-            item_type = getattr(item, "type", None)
+            item_type = ChatClient._field(item, "type")
             if item_type != "function_call":
                 continue
-            name = getattr(item, "name", None)
-            arguments = getattr(item, "arguments", None)
+            name = ChatClient._field(item, "name")
+            arguments = ChatClient._field(item, "arguments")
             if not name or arguments is None:
                 continue
             entry: dict[str, Any] = {
@@ -1765,7 +1780,7 @@ class ChatClient:
                 },
                 "type": "function",
             }
-            call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+            call_id = ChatClient._field(item, "call_id") or ChatClient._field(item, "id")
             if call_id:
                 entry["id"] = call_id
             calls.append(entry)
@@ -1773,25 +1788,28 @@ class ChatClient:
 
     @staticmethod
     def _extract_completion_tool_calls(response: Any) -> list[dict[str, Any]]:
-        choices = getattr(response, "choices", None)
+        choices = ChatClient._field(response, "choices")
         if not choices:
             return []
-        message = getattr(choices[0], "message", None)
+        message = ChatClient._field(choices[0], "message")
         if message is None:
             return []
-        tool_calls = getattr(message, "tool_calls", None) or []
+        tool_calls = ChatClient._field(message, "tool_calls") or []
         calls: list[dict[str, Any]] = []
         for tool_call in tool_calls:
+            function = ChatClient._field(tool_call, "function")
+            if function is None:
+                continue
             entry: dict[str, Any] = {
                 "function": {
-                    "name": tool_call.function.name,
-                    "arguments": tool_call.function.arguments,
+                    "name": ChatClient._field(function, "name"),
+                    "arguments": ChatClient._field(function, "arguments"),
                 }
             }
-            call_id = getattr(tool_call, "id", None)
+            call_id = ChatClient._field(tool_call, "id")
             if call_id:
                 entry["id"] = call_id
-            call_type = getattr(tool_call, "type", None)
+            call_type = ChatClient._field(tool_call, "type")
             if call_type:
                 entry["type"] = call_type
             calls.append(entry)
@@ -1799,19 +1817,19 @@ class ChatClient:
 
     @classmethod
     def _extract_tool_calls(cls, response: Any) -> list[dict[str, Any]]:
-        output_items = getattr(response, "output", None)
+        output_items = cls._field(response, "output")
         if output_items is not None:
             return cls._extract_responses_tool_calls(output_items)
         return cls._extract_completion_tool_calls(response)
 
     @staticmethod
     def _extract_usage(response: Any) -> dict[str, Any] | None:
-        event_type = getattr(response, "type", None)
+        event_type = ChatClient._field(response, "type")
         if event_type == "response.completed":
-            completed_response = getattr(response, "response", None)
-            usage = getattr(completed_response, "usage", None)
+            completed_response = ChatClient._field(response, "response")
+            usage = ChatClient._field(completed_response, "usage")
         else:
-            usage = getattr(response, "usage", None)
+            usage = ChatClient._field(response, "usage")
         if usage is None:
             return None
         if hasattr(usage, "model_dump"):

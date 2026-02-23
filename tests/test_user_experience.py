@@ -254,6 +254,29 @@ def test_responses_mode_chat_and_run_tools(fake_anyllm) -> None:
     assert client.calls[1]["tools"][0]["parameters"]["properties"]["text"]["type"] == "string"
 
 
+def test_responses_mode_accepts_dict_response_shape(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openrouter")
+    client.queue_responses({
+        "output_text": "",
+        "output": [
+            {
+                "type": "function_call",
+                "name": "echo",
+                "arguments": '{"text":"tokyo"}',
+                "call_id": "call_dict_1",
+            }
+        ],
+        "usage": {"total_tokens": 5},
+    })
+
+    llm = LLM(model="openrouter:openrouter/free", api_key="dummy", api_mode="responses")
+    result = llm.run_tools("Call echo for tokyo", tools=[echo])
+
+    assert result.kind == "tools"
+    assert result.tool_results == ["TOKYO"]
+    assert result.error is None
+
+
 def test_stream_events_supports_responses_events_shape(fake_anyllm) -> None:
     client = fake_anyllm.ensure("openrouter")
     client.queue_responses(
