@@ -6,7 +6,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, NoReturn
+from typing import Any, Literal, NoReturn
 
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
@@ -27,6 +27,7 @@ from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput, ToolSet, normalize_tools
 
 MessageInput = dict[str, Any]
+ApiMode = Literal["completion", "responses"]
 
 
 @dataclass(frozen=True)
@@ -172,10 +173,15 @@ class ChatClient:
         core: LLMCore,
         tool_executor: ToolExecutor,
         tape: TapeManager,
+        *,
+        api_mode: ApiMode = "completion",
     ) -> None:
+        if api_mode not in ("completion", "responses"):
+            raise ErrorPayload(ErrorKind.INVALID_INPUT, "api_mode must be 'completion' or 'responses'.")
         self._core = core
         self._tool_executor = tool_executor
         self._tape = tape
+        self._api_mode = api_mode
 
     @property
     def default_context(self) -> TapeContext:
@@ -299,10 +305,24 @@ class ChatClient:
         tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
+        mode: ApiMode | None = None,
     ) -> Any:
         if prepared.context_error is not None:
             raise prepared.context_error
+        request_mode = mode or self._api_mode
+        responses_tools = self._to_responses_tools_payload(tools_payload)
         try:
+            if request_mode == "responses":
+                return self._core.run_responses_sync(
+                    input_data=prepared.payload,
+                    tools_payload=responses_tools,
+                    model=model,
+                    provider=provider,
+                    max_tokens=max_tokens,
+                    stream=stream,
+                    kwargs=kwargs,
+                    on_response=on_response,
+                )
             return self._core.run_chat_sync(
                 messages_payload=prepared.payload,
                 tools_payload=tools_payload,
@@ -330,10 +350,24 @@ class ChatClient:
         tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
+        mode: ApiMode | None = None,
     ) -> Any:
         if prepared.context_error is not None:
             raise prepared.context_error
+        request_mode = mode or self._api_mode
+        responses_tools = self._to_responses_tools_payload(tools_payload)
         try:
+            if request_mode == "responses":
+                return await self._core.run_responses_async(
+                    input_data=prepared.payload,
+                    tools_payload=responses_tools,
+                    model=model,
+                    provider=provider,
+                    max_tokens=max_tokens,
+                    stream=stream,
+                    kwargs=kwargs,
+                    on_response=on_response,
+                )
             return await self._core.run_chat_async(
                 messages_payload=prepared.payload,
                 tools_payload=tools_payload,
@@ -348,6 +382,24 @@ class ChatClient:
             )
         except RepublicError as exc:
             raise ErrorPayload(exc.kind, exc.message) from exc
+
+    @staticmethod
+    def _to_responses_tools_payload(
+        tools_payload: list[dict[str, Any]] | None,
+    ) -> list[dict[str, Any]] | None:
+        if not tools_payload:
+            return None
+
+        payload: list[dict[str, Any]] = []
+        for tool in tools_payload:
+            function = tool.get("function", {})
+            payload.append({
+                "type": "function",
+                "name": function.get("name"),
+                "description": function.get("description", ""),
+                "parameters": function.get("parameters", {}),
+            })
+        return payload
 
     def _normalize_tools(self, tools: ToolInput) -> ToolSet:
         try:
@@ -1637,6 +1689,13 @@ class ChatClient:
     def _extract_text(response: Any) -> str:
         if isinstance(response, str):
             return response
+        output_text = getattr(response, "output_text", None)
+        if isinstance(output_text, str):
+            return output_text
+        if isinstance(response, dict):
+            dict_output_text = response.get("output_text")
+            if isinstance(dict_output_text, str):
+                return dict_output_text
         choices = getattr(response, "choices", None)
         if not choices:
             return ""
@@ -1646,7 +1705,34 @@ class ChatClient:
         return getattr(message, "content", "") or ""
 
     @staticmethod
-    def _extract_tool_calls(response: Any) -> list[dict[str, Any]]:
+    def _extract_responses_tool_calls(output_items: Any) -> list[dict[str, Any]]:
+        if output_items is None:
+            return []
+
+        calls: list[dict[str, Any]] = []
+        for item in output_items:
+            item_type = getattr(item, "type", None)
+            if item_type != "function_call":
+                continue
+            name = getattr(item, "name", None)
+            arguments = getattr(item, "arguments", None)
+            if not name or arguments is None:
+                continue
+            entry: dict[str, Any] = {
+                "function": {
+                    "name": name,
+                    "arguments": arguments,
+                },
+                "type": "function",
+            }
+            call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+            if call_id:
+                entry["id"] = call_id
+            calls.append(entry)
+        return calls
+
+    @staticmethod
+    def _extract_completion_tool_calls(response: Any) -> list[dict[str, Any]]:
         choices = getattr(response, "choices", None)
         if not choices:
             return []
@@ -1670,6 +1756,13 @@ class ChatClient:
                 entry["type"] = call_type
             calls.append(entry)
         return calls
+
+    @classmethod
+    def _extract_tool_calls(cls, response: Any) -> list[dict[str, Any]]:
+        output_items = getattr(response, "output", None)
+        if output_items is not None:
+            return cls._extract_responses_tool_calls(output_items)
+        return cls._extract_completion_tool_calls(response)
 
     @staticmethod
     def _extract_usage(response: Any) -> dict[str, Any] | None:

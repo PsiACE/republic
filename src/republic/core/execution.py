@@ -344,6 +344,12 @@ class LLMCore:
             return kwargs
         return {**kwargs, "max_completion_tokens": max_tokens}
 
+    @staticmethod
+    def _decide_responses_kwargs(max_tokens: int | None, kwargs: dict[str, Any]) -> dict[str, Any]:
+        if "max_output_tokens" in kwargs:
+            return kwargs
+        return {**kwargs, "max_output_tokens": max_tokens}
+
     def run_chat_sync(
         self,
         *,
@@ -422,6 +428,102 @@ class LLMCore:
                         stream=stream,
                         reasoning_effort=reasoning_effort,
                         **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+                    )
+                except Exception as exc:
+                    outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                    last_error = outcome.error
+                    if outcome.decision is AttemptDecision.RETRY_SAME_MODEL:
+                        continue
+                    break
+                else:
+                    result = on_response(response, provider_name, model_id, attempt)
+                    if inspect.isawaitable(result):
+                        result = await result
+                    if result is self.RETRY:
+                        continue
+                    return result
+
+        if last_error is not None:
+            raise last_error
+        if last_provider and last_model:
+            raise RepublicError(
+                ErrorKind.TEMPORARY,
+                f"{last_provider}:{last_model}: LLM call failed after retries",
+            )
+        raise RepublicError(ErrorKind.TEMPORARY, "LLM call failed after retries")
+
+    def run_responses_sync(
+        self,
+        *,
+        input_data: Any,
+        tools_payload: list[dict[str, Any]] | None,
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
+        stream: bool,
+        kwargs: dict[str, Any],
+        on_response: Callable[[Any, str, str, int], Any],
+    ) -> Any:
+        last_provider: str | None = None
+        last_model: str | None = None
+        last_error: RepublicError | None = None
+        for provider_name, model_id, client in self.iter_clients(model, provider):
+            last_provider, last_model = provider_name, model_id
+            for attempt in range(self.max_attempts()):
+                try:
+                    response = client.responses(
+                        model=model_id,
+                        input_data=input_data,
+                        tools=tools_payload,
+                        stream=stream,
+                        **self._decide_responses_kwargs(max_tokens, kwargs),
+                    )
+                except Exception as exc:
+                    outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
+                    last_error = outcome.error
+                    if outcome.decision is AttemptDecision.RETRY_SAME_MODEL:
+                        continue
+                    break
+                else:
+                    result = on_response(response, provider_name, model_id, attempt)
+                    if result is self.RETRY:
+                        continue
+                    return result
+
+        if last_error is not None:
+            raise last_error
+        if last_provider and last_model:
+            raise RepublicError(
+                ErrorKind.TEMPORARY,
+                f"{last_provider}:{last_model}: LLM call failed after retries",
+            )
+        raise RepublicError(ErrorKind.TEMPORARY, "LLM call failed after retries")
+
+    async def run_responses_async(
+        self,
+        *,
+        input_data: Any,
+        tools_payload: list[dict[str, Any]] | None,
+        model: str | None,
+        provider: str | None,
+        max_tokens: int | None,
+        stream: bool,
+        kwargs: dict[str, Any],
+        on_response: Callable[[Any, str, str, int], Any],
+    ) -> Any:
+        last_provider: str | None = None
+        last_model: str | None = None
+        last_error: RepublicError | None = None
+        for provider_name, model_id, client in self.iter_clients(model, provider):
+            last_provider, last_model = provider_name, model_id
+            for attempt in range(self.max_attempts()):
+                try:
+                    response = await client.aresponses(
+                        model=model_id,
+                        input_data=input_data,
+                        tools=tools_payload,
+                        stream=stream,
+                        **self._decide_responses_kwargs(max_tokens, kwargs),
                     )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
