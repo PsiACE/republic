@@ -425,6 +425,15 @@ class ChatClient:
             return data.get(key, default)
         return getattr(data, key, default)
 
+    @classmethod
+    def _is_non_stream_response(cls, response: Any) -> bool:
+        return (
+            isinstance(response, str)
+            or cls._field(response, "choices") is not None
+            or cls._field(response, "output") is not None
+            or cls._field(response, "output_text") is not None
+        )
+
     def _normalize_tools(self, tools: ToolInput) -> ToolSet:
         try:
             return normalize_tools(tools)
@@ -1251,7 +1260,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> TextStream:
-        if hasattr(response, "choices"):
+        if self._is_non_stream_response(response):
             text = self._extract_text(response)
             tool_calls = self._extract_tool_calls(response)
             state = StreamState()
@@ -1315,7 +1324,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> AsyncTextStream:
-        if hasattr(response, "choices"):
+        if self._is_non_stream_response(response):
             text = self._extract_text(response)
             tool_calls = self._extract_tool_calls(response)
             state = StreamState()
@@ -1442,7 +1451,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> StreamEvents:
-        if hasattr(response, "choices"):
+        if self._is_non_stream_response(response):
             return self._build_event_stream_from_response(
                 prepared,
                 response,
@@ -1515,7 +1524,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> AsyncStreamEvents:
-        if hasattr(response, "choices"):
+        if self._is_non_stream_response(response):
             return self._build_async_event_stream_from_response(
                 prepared,
                 response,

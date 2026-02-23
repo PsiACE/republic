@@ -345,6 +345,39 @@ async def test_run_tools_async_executes_async_tool_handler(fake_anyllm) -> None:
 
 
 @pytest.mark.asyncio
+async def test_responses_mode_async_chat_tool_calls_and_stream(fake_anyllm) -> None:
+    async def _astream() -> object:
+        for item in [
+            make_responses_text_delta("Hello"),
+            make_responses_text_delta(" async"),
+            make_responses_completed({"total_tokens": 9}),
+        ]:
+            yield item
+
+    client = fake_anyllm.ensure("openrouter")
+    client.queue_aresponses(
+        make_responses_response(text="pong"),
+        make_responses_response(tool_calls=[make_responses_tool_call("echo", '{"text":"tokyo"}', call_id="call_a1")]),
+        _astream(),
+    )
+
+    llm = LLM(model="openrouter:openrouter/free", api_key="dummy", api_mode="responses")
+
+    text = await llm.chat_async("Reply with pong")
+    calls = await llm.tool_calls_async("Use echo for tokyo", tools=[echo])
+    stream = await llm.stream_async("Say hello async")
+    streamed = "".join([chunk async for chunk in stream])
+
+    assert text == "pong"
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == "echo"
+    assert calls[0]["function"]["arguments"] == '{"text":"tokyo"}'
+    assert streamed == "Hello async"
+    assert stream.error is None
+    assert stream.usage == {"total_tokens": 9}
+
+
+@pytest.mark.asyncio
 async def test_stream_events_async_executes_async_tool_handler(fake_anyllm) -> None:
     client = fake_anyllm.ensure("openai")
     client.queue_completion(make_response(tool_calls=[make_tool_call("async_echo", '{"text":"tokyo"}')]))
