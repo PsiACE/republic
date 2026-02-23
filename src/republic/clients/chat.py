@@ -6,6 +6,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
+from types import SimpleNamespace
 from typing import Any, Literal, NoReturn
 
 from republic.core.errors import ErrorKind, RepublicError
@@ -159,7 +160,11 @@ class ToolCallAssembler:
                 entry["function"]["name"] = name
             arguments = getattr(func, "arguments", None)
             if arguments:
-                entry["function"]["arguments"] = entry["function"].get("arguments", "") + arguments
+                is_complete = bool(getattr(tool_call, "arguments_complete", False))
+                if is_complete:
+                    entry["function"]["arguments"] = arguments
+                else:
+                    entry["function"]["arguments"] = entry["function"].get("arguments", "") + arguments
 
     def finalize(self) -> list[dict[str, Any]]:
         return [self._calls[key] for key in self._order]
@@ -1357,6 +1362,34 @@ class ChatClient:
 
     @staticmethod
     def _extract_chunk_tool_call_deltas(chunk: Any) -> list[Any]:
+        event_type = getattr(chunk, "type", None)
+        if event_type == "response.function_call_arguments.delta":
+            delta = getattr(chunk, "delta", None)
+            item_id = getattr(chunk, "item_id", None)
+            if not isinstance(delta, str) or not item_id:
+                return []
+            return [
+                SimpleNamespace(
+                    id=item_id,
+                    type="function",
+                    function=SimpleNamespace(name="", arguments=delta),
+                )
+            ]
+        if event_type == "response.function_call_arguments.done":
+            item_id = getattr(chunk, "item_id", None)
+            name = getattr(chunk, "name", None)
+            arguments = getattr(chunk, "arguments", None)
+            if not item_id or not isinstance(arguments, str):
+                return []
+            return [
+                SimpleNamespace(
+                    id=item_id,
+                    type="function",
+                    function=SimpleNamespace(name=name or "", arguments=arguments),
+                    arguments_complete=True,
+                )
+            ]
+
         choices = getattr(chunk, "choices", None)
         if not choices:
             return []
@@ -1367,6 +1400,13 @@ class ChatClient:
 
     @staticmethod
     def _extract_chunk_text(chunk: Any) -> str:
+        event_type = getattr(chunk, "type", None)
+        if event_type == "response.output_text.delta":
+            delta = getattr(chunk, "delta", None)
+            if isinstance(delta, str):
+                return delta
+            return ""
+
         choices = getattr(chunk, "choices", None)
         if not choices:
             return ""
@@ -1766,7 +1806,12 @@ class ChatClient:
 
     @staticmethod
     def _extract_usage(response: Any) -> dict[str, Any] | None:
-        usage = getattr(response, "usage", None)
+        event_type = getattr(response, "type", None)
+        if event_type == "response.completed":
+            completed_response = getattr(response, "response", None)
+            usage = getattr(completed_response, "usage", None)
+        else:
+            usage = getattr(response, "usage", None)
         if usage is None:
             return None
         if hasattr(usage, "model_dump"):
