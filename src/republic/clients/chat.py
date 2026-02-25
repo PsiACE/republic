@@ -1662,21 +1662,29 @@ class ChatClient:
     def _extract_tool_calls(response: Any) -> list[dict[str, Any]]:
         output = getattr(response, "output", None)
         if output:
-            calls: list[dict[str, Any]] = []
-            for item in output:
-                if getattr(item, "type", None) != "function_call":
-                    continue
-                name = getattr(item, "name", None)
-                arguments = getattr(item, "arguments", None)
-                if not name:
-                    continue
-                entry: dict[str, Any] = {"function": {"name": name, "arguments": arguments or ""}}
-                call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
-                if call_id:
-                    entry["id"] = call_id
-                entry["type"] = "function"
-                calls.append(entry)
-            return calls
+            return ChatClient._extract_responses_tool_calls(output)
+        return ChatClient._extract_completion_tool_calls(response)
+
+    @staticmethod
+    def _extract_responses_tool_calls(output: list[Any]) -> list[dict[str, Any]]:
+        calls: list[dict[str, Any]] = []
+        for item in output:
+            if getattr(item, "type", None) != "function_call":
+                continue
+            name = getattr(item, "name", None)
+            arguments = getattr(item, "arguments", None)
+            if not name:
+                continue
+            entry: dict[str, Any] = {"function": {"name": name, "arguments": arguments or ""}}
+            call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+            if call_id:
+                entry["id"] = call_id
+            entry["type"] = "function"
+            calls.append(entry)
+        return calls
+
+    @staticmethod
+    def _extract_completion_tool_calls(response: Any) -> list[dict[str, Any]]:
         choices = getattr(response, "choices", None)
         if not choices:
             return []

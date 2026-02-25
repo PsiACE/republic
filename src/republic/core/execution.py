@@ -352,11 +352,67 @@ class LLMCore:
         return {**{k: v for k, v in kwargs.items() if k != "extra_headers"}, "max_output_tokens": max_tokens}
 
     def _should_use_responses(self, client: AnyLLM, *, stream: bool) -> bool:
-        if stream:
-            return False
-        if not self._use_responses:
-            return False
-        return True
+        return not stream and self._use_responses and bool(getattr(client, "SUPPORTS_RESPONSES", False))
+
+    def _call_client_sync(
+        self,
+        *,
+        client: AnyLLM,
+        provider_name: str,
+        model_id: str,
+        messages_payload: list[dict[str, Any]],
+        tools_payload: list[dict[str, Any]] | None,
+        max_tokens: int | None,
+        stream: bool,
+        reasoning_effort: Any | None,
+        kwargs: dict[str, Any],
+    ) -> Any:
+        if self._should_use_responses(client, stream=stream):
+            return client.responses(
+                model=model_id,
+                input_data=self._convert_messages_to_responses_input(messages_payload),
+                tools=tools_payload,
+                stream=stream,
+                **self._decide_responses_kwargs(max_tokens, kwargs),
+            )
+        return client.completion(
+            model=model_id,
+            messages=messages_payload,
+            tools=tools_payload,
+            stream=stream,
+            reasoning_effort=reasoning_effort,
+            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+        )
+
+    async def _call_client_async(
+        self,
+        *,
+        client: AnyLLM,
+        provider_name: str,
+        model_id: str,
+        messages_payload: list[dict[str, Any]],
+        tools_payload: list[dict[str, Any]] | None,
+        max_tokens: int | None,
+        stream: bool,
+        reasoning_effort: Any | None,
+        kwargs: dict[str, Any],
+    ) -> Any:
+        if self._should_use_responses(client, stream=stream):
+            return await client.aresponses(
+                model=model_id,
+                input_data=self._convert_messages_to_responses_input(messages_payload),
+                tools=tools_payload,
+                stream=stream,
+                **self._decide_responses_kwargs(max_tokens, kwargs),
+            )
+        return await client.acompletion(
+            model=model_id,
+            messages=messages_payload,
+            tools=tools_payload,
+            stream=stream,
+            reasoning_effort=reasoning_effort,
+            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+        )
 
     @staticmethod
     def _convert_messages_to_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -375,26 +431,22 @@ class LLMCore:
                     if not name:
                         continue
                     call_id = tool_call.get("id") or tool_call.get("call_id") or f"call_{index}"
-                    input_items.append(
-                        {
-                            "type": "function_call",
-                            "name": name,
-                            "arguments": func.get("arguments", ""),
-                            "call_id": call_id,
-                        }
-                    )
+                    input_items.append({
+                        "type": "function_call",
+                        "name": name,
+                        "arguments": func.get("arguments", ""),
+                        "call_id": call_id,
+                    })
 
             if role == "tool":
                 call_id = message.get("tool_call_id") or message.get("call_id")
                 if not call_id:
                     continue
-                input_items.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": message.get("content", ""),
-                    }
-                )
+                input_items.append({
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": message.get("content", ""),
+                })
         return input_items
 
     def run_chat_sync(
@@ -418,23 +470,17 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    if self._should_use_responses(client, stream=stream):
-                        response = client.responses(
-                            model=model_id,
-                            input_data=self._convert_messages_to_responses_input(messages_payload),
-                            tools=tools_payload,
-                            stream=stream,
-                            **self._decide_responses_kwargs(max_tokens, kwargs),
-                        )
-                    else:
-                        response = client.completion(
-                            model=model_id,
-                            messages=messages_payload,
-                            tools=tools_payload,
-                            stream=stream,
-                            reasoning_effort=reasoning_effort,
-                            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
-                        )
+                    response = self._call_client_sync(
+                        client=client,
+                        provider_name=provider_name,
+                        model_id=model_id,
+                        messages_payload=messages_payload,
+                        tools_payload=tools_payload,
+                        max_tokens=max_tokens,
+                        stream=stream,
+                        reasoning_effort=reasoning_effort,
+                        kwargs=kwargs,
+                    )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
                     last_error = outcome.error
@@ -477,23 +523,17 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    if self._should_use_responses(client, stream=stream):
-                        response = await client.aresponses(
-                            model=model_id,
-                            input_data=self._convert_messages_to_responses_input(messages_payload),
-                            tools=tools_payload,
-                            stream=stream,
-                            **self._decide_responses_kwargs(max_tokens, kwargs),
-                        )
-                    else:
-                        response = await client.acompletion(
-                            model=model_id,
-                            messages=messages_payload,
-                            tools=tools_payload,
-                            stream=stream,
-                            reasoning_effort=reasoning_effort,
-                            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
-                        )
+                    response = await self._call_client_async(
+                        client=client,
+                        provider_name=provider_name,
+                        model_id=model_id,
+                        messages_payload=messages_payload,
+                        tools_payload=tools_payload,
+                        max_tokens=max_tokens,
+                        stream=stream,
+                        reasoning_effort=reasoning_effort,
+                        kwargs=kwargs,
+                    )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
                     last_error = outcome.error

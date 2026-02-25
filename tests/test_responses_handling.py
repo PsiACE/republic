@@ -20,9 +20,7 @@ def test_llm_use_responses_calls_responses(fake_anyllm) -> None:
 
 
 def test_extract_tool_calls_from_responses() -> None:
-    response = make_responses_response(
-        tool_calls=[make_responses_function_call("echo", '{"text":"hi"}')]
-    )
+    response = make_responses_response(tool_calls=[make_responses_function_call("echo", '{"text":"hi"}')])
 
     calls = ChatClient._extract_tool_calls(response)
 
@@ -50,7 +48,7 @@ def test_convert_tool_messages_to_responses_input() -> None:
                 }
             ],
         },
-        {"role": "tool", "tool_call_id": "call_1", "content": "{\"ok\":true}"},
+        {"role": "tool", "tool_call_id": "call_1", "content": '{"ok":true}'},
     ]
 
     input_items = LLMCore._convert_messages_to_responses_input(messages)
@@ -59,5 +57,5 @@ def test_convert_tool_messages_to_responses_input() -> None:
         {"role": "system", "content": "sys", "type": "message"},
         {"role": "user", "content": "hi", "type": "message"},
         {"type": "function_call", "name": "echo", "arguments": '{"text":"hi"}', "call_id": "call_1"},
-        {"type": "function_call_output", "call_id": "call_1", "output": "{\"ok\":true}"},
+        {"type": "function_call_output", "call_id": "call_1", "output": '{"ok":true}'},
     ]
