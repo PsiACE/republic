@@ -348,15 +348,54 @@ class LLMCore:
 
     def _decide_responses_kwargs(self, max_tokens: int | None, kwargs: dict[str, Any]) -> dict[str, Any]:
         if "max_output_tokens" in kwargs:
-            return kwargs
-        return {**kwargs, "max_output_tokens": max_tokens}
+            return {k: v for k, v in kwargs.items() if k != "extra_headers"}
+        return {**{k: v for k, v in kwargs.items() if k != "extra_headers"}, "max_output_tokens": max_tokens}
 
     def _should_use_responses(self, client: AnyLLM, *, stream: bool) -> bool:
         if stream:
             return False
         if not self._use_responses:
             return False
-        return bool(getattr(client, "SUPPORTS_RESPONSES", False))
+        return True
+
+    @staticmethod
+    def _convert_messages_to_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        input_items: list[dict[str, Any]] = []
+        for message in messages:
+            role = message.get("role")
+            content = message.get("content")
+            if role in {"system", "user", "developer", "assistant"} and content not in (None, ""):
+                input_items.append({"role": role, "content": content, "type": "message"})
+
+            if role == "assistant":
+                tool_calls = message.get("tool_calls") or []
+                for index, tool_call in enumerate(tool_calls):
+                    func = tool_call.get("function") or {}
+                    name = func.get("name")
+                    if not name:
+                        continue
+                    call_id = tool_call.get("id") or tool_call.get("call_id") or f"call_{index}"
+                    input_items.append(
+                        {
+                            "type": "function_call",
+                            "name": name,
+                            "arguments": func.get("arguments", ""),
+                            "call_id": call_id,
+                        }
+                    )
+
+            if role == "tool":
+                call_id = message.get("tool_call_id") or message.get("call_id")
+                if not call_id:
+                    continue
+                input_items.append(
+                    {
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": message.get("content", ""),
+                    }
+                )
+        return input_items
 
     def run_chat_sync(
         self,
@@ -382,7 +421,7 @@ class LLMCore:
                     if self._should_use_responses(client, stream=stream):
                         response = client.responses(
                             model=model_id,
-                            input_data=messages_payload,
+                            input_data=self._convert_messages_to_responses_input(messages_payload),
                             tools=tools_payload,
                             stream=stream,
                             **self._decide_responses_kwargs(max_tokens, kwargs),
@@ -441,7 +480,7 @@ class LLMCore:
                     if self._should_use_responses(client, stream=stream):
                         response = await client.aresponses(
                             model=model_id,
-                            input_data=messages_payload,
+                            input_data=self._convert_messages_to_responses_input(messages_payload),
                             tools=tools_payload,
                             stream=stream,
                             **self._decide_responses_kwargs(max_tokens, kwargs),
