@@ -61,6 +61,7 @@ class LLMCore:
         api_key: str | dict[str, str] | None,
         api_base: str | dict[str, str] | None,
         client_args: dict[str, Any],
+        use_responses: bool,
         verbose: int,
         error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
@@ -71,6 +72,7 @@ class LLMCore:
         self._api_key = api_key
         self._api_base = api_base
         self._client_args = client_args
+        self._use_responses = use_responses
         self._verbose = verbose
         self._error_classifier = error_classifier
         self._client_cache: dict[str, AnyLLM] = {}
@@ -344,6 +346,18 @@ class LLMCore:
             return kwargs
         return {**kwargs, "max_completion_tokens": max_tokens}
 
+    def _decide_responses_kwargs(self, max_tokens: int | None, kwargs: dict[str, Any]) -> dict[str, Any]:
+        if "max_output_tokens" in kwargs:
+            return kwargs
+        return {**kwargs, "max_output_tokens": max_tokens}
+
+    def _should_use_responses(self, client: AnyLLM, *, stream: bool) -> bool:
+        if stream:
+            return False
+        if not self._use_responses:
+            return False
+        return bool(getattr(client, "SUPPORTS_RESPONSES", False))
+
     def run_chat_sync(
         self,
         *,
@@ -365,14 +379,23 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    response = client.completion(
-                        model=model_id,
-                        messages=messages_payload,
-                        tools=tools_payload,
-                        stream=stream,
-                        reasoning_effort=reasoning_effort,
-                        **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
-                    )
+                    if self._should_use_responses(client, stream=stream):
+                        response = client.responses(
+                            model=model_id,
+                            input_data=messages_payload,
+                            tools=tools_payload,
+                            stream=stream,
+                            **self._decide_responses_kwargs(max_tokens, kwargs),
+                        )
+                    else:
+                        response = client.completion(
+                            model=model_id,
+                            messages=messages_payload,
+                            tools=tools_payload,
+                            stream=stream,
+                            reasoning_effort=reasoning_effort,
+                            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+                        )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
                     last_error = outcome.error
@@ -415,14 +438,23 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    response = await client.acompletion(
-                        model=model_id,
-                        messages=messages_payload,
-                        tools=tools_payload,
-                        stream=stream,
-                        reasoning_effort=reasoning_effort,
-                        **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
-                    )
+                    if self._should_use_responses(client, stream=stream):
+                        response = await client.aresponses(
+                            model=model_id,
+                            input_data=messages_payload,
+                            tools=tools_payload,
+                            stream=stream,
+                            **self._decide_responses_kwargs(max_tokens, kwargs),
+                        )
+                    else:
+                        response = await client.acompletion(
+                            model=model_id,
+                            messages=messages_payload,
+                            tools=tools_payload,
+                            stream=stream,
+                            reasoning_effort=reasoning_effort,
+                            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+                        )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
                     last_error = outcome.error

@@ -1637,6 +1637,19 @@ class ChatClient:
     def _extract_text(response: Any) -> str:
         if isinstance(response, str):
             return response
+        output = getattr(response, "output", None)
+        if output:
+            parts: list[str] = []
+            for item in output:
+                if getattr(item, "type", None) != "message":
+                    continue
+                content = getattr(item, "content", None) or []
+                for entry in content:
+                    if getattr(entry, "type", None) == "output_text":
+                        text = getattr(entry, "text", None)
+                        if text:
+                            parts.append(text)
+            return "".join(parts)
         choices = getattr(response, "choices", None)
         if not choices:
             return ""
@@ -1647,6 +1660,23 @@ class ChatClient:
 
     @staticmethod
     def _extract_tool_calls(response: Any) -> list[dict[str, Any]]:
+        output = getattr(response, "output", None)
+        if output:
+            calls: list[dict[str, Any]] = []
+            for item in output:
+                if getattr(item, "type", None) != "function_call":
+                    continue
+                name = getattr(item, "name", None)
+                arguments = getattr(item, "arguments", None)
+                if not name:
+                    continue
+                entry: dict[str, Any] = {"function": {"name": name, "arguments": arguments or ""}}
+                call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+                if call_id:
+                    entry["id"] = call_id
+                entry["type"] = "function"
+                calls.append(entry)
+            return calls
         choices = getattr(response, "choices", None)
         if not choices:
             return []
