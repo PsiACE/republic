@@ -368,11 +368,13 @@ class LLMCore:
         kwargs: dict[str, Any],
     ) -> Any:
         if self._should_use_responses(client, stream=stream):
+            instructions, input_items = self._split_messages_for_responses(messages_payload)
             return client.responses(
                 model=model_id,
-                input_data=self._convert_messages_to_responses_input(messages_payload),
+                input_data=input_items,
                 tools=tools_payload,
                 stream=stream,
+                instructions=instructions,
                 **self._decide_responses_kwargs(max_tokens, kwargs),
             )
         return client.completion(
@@ -398,11 +400,13 @@ class LLMCore:
         kwargs: dict[str, Any],
     ) -> Any:
         if self._should_use_responses(client, stream=stream):
+            instructions, input_items = self._split_messages_for_responses(messages_payload)
             return await client.aresponses(
                 model=model_id,
-                input_data=self._convert_messages_to_responses_input(messages_payload),
+                input_data=input_items,
                 tools=tools_payload,
                 stream=stream,
+                instructions=instructions,
                 **self._decide_responses_kwargs(max_tokens, kwargs),
             )
         return await client.acompletion(
@@ -415,12 +419,32 @@ class LLMCore:
         )
 
     @staticmethod
+    def _split_messages_for_responses(
+        messages: list[dict[str, Any]],
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        instructions_parts: list[str] = []
+        filtered_messages: list[dict[str, Any]] = []
+        for message in messages:
+            role = message.get("role")
+            if role in {"system", "developer"}:
+                content = message.get("content")
+                if content not in (None, ""):
+                    instructions_parts.append(str(content))
+                continue
+            filtered_messages.append(message)
+
+        instructions = "\n\n".join(part for part in instructions_parts if part.strip())
+        if not instructions:
+            instructions = None
+        return instructions, LLMCore._convert_messages_to_responses_input(filtered_messages)
+
+    @staticmethod
     def _convert_messages_to_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
         input_items: list[dict[str, Any]] = []
         for message in messages:
             role = message.get("role")
             content = message.get("content")
-            if role in {"system", "user", "developer", "assistant"} and content not in (None, ""):
+            if role in {"user", "assistant"} and content not in (None, ""):
                 input_items.append({"role": role, "content": content, "type": "message"})
 
             if role == "assistant":

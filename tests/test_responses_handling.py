@@ -33,7 +33,7 @@ def test_extract_tool_calls_from_responses() -> None:
     ]
 
 
-def test_convert_tool_messages_to_responses_input() -> None:
+def test_split_messages_for_responses() -> None:
     messages = [
         {"role": "system", "content": "sys"},
         {"role": "user", "content": "hi"},
@@ -51,10 +51,10 @@ def test_convert_tool_messages_to_responses_input() -> None:
         {"role": "tool", "tool_call_id": "call_1", "content": '{"ok":true}'},
     ]
 
-    input_items = LLMCore._convert_messages_to_responses_input(messages)
+    instructions, input_items = LLMCore._split_messages_for_responses(messages)
 
+    assert instructions == "sys"
     assert input_items == [
-        {"role": "system", "content": "sys", "type": "message"},
         {"role": "user", "content": "hi", "type": "message"},
         {"type": "function_call", "name": "echo", "arguments": '{"text":"hi"}', "call_id": "call_1"},
         {"type": "function_call_output", "call_id": "call_1", "output": '{"ok":true}'},
