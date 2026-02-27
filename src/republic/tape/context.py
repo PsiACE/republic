@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TypeAlias
 
 from republic.tape.entries import TapeEntry
@@ -25,10 +25,12 @@ class TapeContext:
 
     anchor: LAST_ANCHOR for the most recent anchor, None for the full tape, or an anchor name.
     select: Optional selector called after anchor slicing that returns messages.
+    state: Optional state dictionary to be passed along with the context.
     """
 
     anchor: AnchorSelector = LAST_ANCHOR
-    select: Callable[[Iterable[TapeEntry]], list[dict[str, Any]]] | None = None
+    select: Callable[[Iterable[TapeEntry], TapeContext], list[dict[str, Any]]] | None = None
+    state: dict[str, Any] = field(default_factory=dict)
 
     def build_query(self, query: TapeQuery) -> TapeQuery:
         if self.anchor is None:
@@ -40,7 +42,7 @@ class TapeContext:
 
 def build_messages(entries: Iterable[TapeEntry], context: TapeContext) -> list[dict[str, Any]]:
     if context.select is not None:
-        return context.select(entries)
+        return context.select(entries, context)
     return _default_messages(entries)
 
 
