@@ -43,12 +43,11 @@ class TapeManager:
     def list_tapes(self) -> list[str]:
         return self._tape_store.list_tapes()
 
-    def read_entries(self, tape: str) -> list[TapeEntry]:
-        return self._tape_store.read(tape) or []
-
     def read_messages(self, tape: str, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         active_context = context or self._global_context
-        return build_messages(self.read_entries(tape), active_context)
+        query = self.query_tape(tape)
+        query = active_context.build_query(query)
+        return build_messages(self._tape_store.fetch_all(query), active_context)
 
     def append_entry(self, tape: str, entry: TapeEntry) -> None:
         self._tape_store.append(tape, entry)

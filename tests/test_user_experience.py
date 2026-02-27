@@ -119,7 +119,7 @@ def test_tape_requires_anchor_then_records_full_run(fake_anyllm) -> None:
     second_messages = client.calls[-1]["messages"]
     assert [message["role"] for message in second_messages] == ["user", "assistant", "user"]
 
-    entries = tape.read_entries()
+    entries = list(tape.query.all())
     kinds = [entry.kind for entry in entries]
     assert kinds[0] == "error"
     assert entries[0].payload["kind"] == ErrorKind.NOT_FOUND.value

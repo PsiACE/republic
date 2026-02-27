@@ -52,9 +52,6 @@ class Tape:
     def context(self, value: TapeContext | None) -> None:
         self._local_context = value
 
-    def read_entries(self) -> list[TapeEntry]:
-        return self._manager.read_entries(self._name)
-
     def read_messages(self, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         active_context = context or self.context
         return self._manager.read_messages(self._name, context=active_context)
@@ -62,6 +59,7 @@ class Tape:
     def append(self, entry: TapeEntry) -> None:
         self._manager.append_entry(self._name, entry)
 
+    @property
     def query(self) -> TapeQuery:
         return self._manager.query_tape(self._name)
 

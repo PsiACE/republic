@@ -54,6 +54,7 @@ This branch also finalizes:
 
 - `ContextSelection` removed. `read_messages(...)` now returns `list[dict[str, Any]]`.
 - `QueryResult` removed. `TapeQuery.all()` now returns `list[TapeEntry]`, and errors are raised as `ErrorPayload`.
+- `read_entries()` is deprecated. Use `tape.query.all()` for full entry reads.
 
 ## Migration Examples
 
