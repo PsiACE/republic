@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any
 
 from republic.__about__ import DEFAULT_MODEL
 from republic.clients._internal import InternalOps
@@ -38,8 +38,8 @@ class LLM:
         api_key: str | dict[str, str] | None = None,
         api_base: str | dict[str, str] | None = None,
         client_args: dict[str, Any] | None = None,
+        use_responses: bool = False,
         verbose: int = 0,
-        api_mode: Literal["completion", "responses"] = "completion",
         tape_store: TapeStore | None = None,
         context: TapeContext | None = None,
         error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
@@ -48,8 +48,6 @@ class LLM:
             raise RepublicError(ErrorKind.INVALID_INPUT, "verbose must be 0, 1, or 2")
         if max_retries < 0:
             raise RepublicError(ErrorKind.INVALID_INPUT, "max_retries must be >= 0")
-        if api_mode not in ("completion", "responses"):
-            raise RepublicError(ErrorKind.INVALID_INPUT, "api_mode must be 'completion' or 'responses'")
 
         if not model:
             model = DEFAULT_MODEL
@@ -65,6 +63,7 @@ class LLM:
             api_key=api_key,
             api_base=api_base,
             client_args=client_args or {},
+            use_responses=use_responses,
             verbose=verbose,
             error_classifier=error_classifier,
         )
@@ -74,7 +73,6 @@ class LLM:
             self._core,
             tool_executor,
             tape=self._tape,
-            api_mode=api_mode,
         )
         self._text_client = TextClient(self._chat_client)
         self.embeddings = EmbeddingClient(self._core)

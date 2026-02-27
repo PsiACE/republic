@@ -61,6 +61,7 @@ class LLMCore:
         api_key: str | dict[str, str] | None,
         api_base: str | dict[str, str] | None,
         client_args: dict[str, Any],
+        use_responses: bool,
         verbose: int,
         error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
@@ -71,6 +72,7 @@ class LLMCore:
         self._api_key = api_key
         self._api_base = api_base
         self._client_args = client_args
+        self._use_responses = use_responses
         self._verbose = verbose
         self._error_classifier = error_classifier
         self._client_cache: dict[str, AnyLLM] = {}
@@ -344,11 +346,133 @@ class LLMCore:
             return kwargs
         return {**kwargs, "max_completion_tokens": max_tokens}
 
+    def _decide_responses_kwargs(self, max_tokens: int | None, kwargs: dict[str, Any]) -> dict[str, Any]:
+        clean_kwargs = {k: v for k, v in kwargs.items() if k != "extra_headers"}
+        if "max_output_tokens" in clean_kwargs:
+            return clean_kwargs
+        return {**clean_kwargs, "max_output_tokens": max_tokens}
+
+    def _should_use_responses(self, client: AnyLLM, *, stream: bool) -> bool:
+        return not stream and self._use_responses and bool(getattr(client, "SUPPORTS_RESPONSES", False))
+
+    def _call_client_sync(
+        self,
+        *,
+        client: AnyLLM,
+        provider_name: str,
+        model_id: str,
+        messages_payload: list[dict[str, Any]],
+        tools_payload: list[dict[str, Any]] | None,
+        max_tokens: int | None,
+        stream: bool,
+        reasoning_effort: Any | None,
+        kwargs: dict[str, Any],
+    ) -> Any:
+        if self._should_use_responses(client, stream=stream):
+            instructions, input_items = self._split_messages_for_responses(messages_payload)
+            return client.responses(
+                model=model_id,
+                input_data=input_items,
+                tools=tools_payload,
+                stream=stream,
+                instructions=instructions,
+                **self._decide_responses_kwargs(max_tokens, kwargs),
+            )
+        return client.completion(
+            model=model_id,
+            messages=messages_payload,
+            tools=tools_payload,
+            stream=stream,
+            reasoning_effort=reasoning_effort,
+            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+        )
+
+    async def _call_client_async(
+        self,
+        *,
+        client: AnyLLM,
+        provider_name: str,
+        model_id: str,
+        messages_payload: list[dict[str, Any]],
+        tools_payload: list[dict[str, Any]] | None,
+        max_tokens: int | None,
+        stream: bool,
+        reasoning_effort: Any | None,
+        kwargs: dict[str, Any],
+    ) -> Any:
+        if self._should_use_responses(client, stream=stream):
+            instructions, input_items = self._split_messages_for_responses(messages_payload)
+            return await client.aresponses(
+                model=model_id,
+                input_data=input_items,
+                tools=tools_payload,
+                stream=stream,
+                instructions=instructions,
+                **self._decide_responses_kwargs(max_tokens, kwargs),
+            )
+        return await client.acompletion(
+            model=model_id,
+            messages=messages_payload,
+            tools=tools_payload,
+            stream=stream,
+            reasoning_effort=reasoning_effort,
+            **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+        )
+
     @staticmethod
-    def _decide_responses_kwargs(max_tokens: int | None, kwargs: dict[str, Any]) -> dict[str, Any]:
-        if "max_output_tokens" in kwargs:
-            return kwargs
-        return {**kwargs, "max_output_tokens": max_tokens}
+    def _split_messages_for_responses(
+        messages: list[dict[str, Any]],
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        instructions_parts: list[str] = []
+        filtered_messages: list[dict[str, Any]] = []
+        for message in messages:
+            role = message.get("role")
+            if role in {"system", "developer"}:
+                content = message.get("content")
+                if content not in (None, ""):
+                    instructions_parts.append(str(content))
+                continue
+            filtered_messages.append(message)
+
+        instructions = "\n\n".join(part for part in instructions_parts if part.strip())
+        if not instructions:
+            instructions = None
+        return instructions, LLMCore._convert_messages_to_responses_input(filtered_messages)
+
+    @staticmethod
+    def _convert_messages_to_responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        input_items: list[dict[str, Any]] = []
+        for message in messages:
+            role = message.get("role")
+            content = message.get("content")
+            if role in {"user", "assistant"} and content not in (None, ""):
+                input_items.append({"role": role, "content": content, "type": "message"})
+
+            if role == "assistant":
+                tool_calls = message.get("tool_calls") or []
+                for index, tool_call in enumerate(tool_calls):
+                    func = tool_call.get("function") or {}
+                    name = func.get("name")
+                    if not name:
+                        continue
+                    call_id = tool_call.get("id") or tool_call.get("call_id") or f"call_{index}"
+                    input_items.append({
+                        "type": "function_call",
+                        "name": name,
+                        "arguments": func.get("arguments", ""),
+                        "call_id": call_id,
+                    })
+
+            if role == "tool":
+                call_id = message.get("tool_call_id") or message.get("call_id")
+                if not call_id:
+                    continue
+                input_items.append({
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": message.get("content", ""),
+                })
+        return input_items
 
     def run_chat_sync(
         self,
@@ -360,7 +484,6 @@ class LLMCore:
         max_tokens: int | None,
         stream: bool,
         reasoning_effort: Any | None,
-        tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
     ) -> Any:
@@ -371,13 +494,16 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    response = client.completion(
-                        model=model_id,
-                        messages=messages_payload,
-                        tools=tools_payload,
+                    response = self._call_client_sync(
+                        client=client,
+                        provider_name=provider_name,
+                        model_id=model_id,
+                        messages_payload=messages_payload,
+                        tools_payload=tools_payload,
+                        max_tokens=max_tokens,
                         stream=stream,
                         reasoning_effort=reasoning_effort,
-                        **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
+                        kwargs=kwargs,
                     )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
@@ -410,7 +536,6 @@ class LLMCore:
         max_tokens: int | None,
         stream: bool,
         reasoning_effort: Any | None,
-        tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
     ) -> Any:
@@ -421,109 +546,16 @@ class LLMCore:
             last_provider, last_model = provider_name, model_id
             for attempt in range(self.max_attempts()):
                 try:
-                    response = await client.acompletion(
-                        model=model_id,
-                        messages=messages_payload,
-                        tools=tools_payload,
+                    response = await self._call_client_async(
+                        client=client,
+                        provider_name=provider_name,
+                        model_id=model_id,
+                        messages_payload=messages_payload,
+                        tools_payload=tools_payload,
+                        max_tokens=max_tokens,
                         stream=stream,
                         reasoning_effort=reasoning_effort,
-                        **self._decide_kwargs_for_provider(provider_name, max_tokens, kwargs),
-                    )
-                except Exception as exc:
-                    outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
-                    last_error = outcome.error
-                    if outcome.decision is AttemptDecision.RETRY_SAME_MODEL:
-                        continue
-                    break
-                else:
-                    result = on_response(response, provider_name, model_id, attempt)
-                    if inspect.isawaitable(result):
-                        result = await result
-                    if result is self.RETRY:
-                        continue
-                    return result
-
-        if last_error is not None:
-            raise last_error
-        if last_provider and last_model:
-            raise RepublicError(
-                ErrorKind.TEMPORARY,
-                f"{last_provider}:{last_model}: LLM call failed after retries",
-            )
-        raise RepublicError(ErrorKind.TEMPORARY, "LLM call failed after retries")
-
-    def run_responses_sync(
-        self,
-        *,
-        input_data: Any,
-        tools_payload: list[dict[str, Any]] | None,
-        model: str | None,
-        provider: str | None,
-        max_tokens: int | None,
-        stream: bool,
-        kwargs: dict[str, Any],
-        on_response: Callable[[Any, str, str, int], Any],
-    ) -> Any:
-        last_provider: str | None = None
-        last_model: str | None = None
-        last_error: RepublicError | None = None
-        for provider_name, model_id, client in self.iter_clients(model, provider):
-            last_provider, last_model = provider_name, model_id
-            for attempt in range(self.max_attempts()):
-                try:
-                    response = client.responses(
-                        model=model_id,
-                        input_data=input_data,
-                        tools=tools_payload,
-                        stream=stream,
-                        **self._decide_responses_kwargs(max_tokens, kwargs),
-                    )
-                except Exception as exc:
-                    outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)
-                    last_error = outcome.error
-                    if outcome.decision is AttemptDecision.RETRY_SAME_MODEL:
-                        continue
-                    break
-                else:
-                    result = on_response(response, provider_name, model_id, attempt)
-                    if result is self.RETRY:
-                        continue
-                    return result
-
-        if last_error is not None:
-            raise last_error
-        if last_provider and last_model:
-            raise RepublicError(
-                ErrorKind.TEMPORARY,
-                f"{last_provider}:{last_model}: LLM call failed after retries",
-            )
-        raise RepublicError(ErrorKind.TEMPORARY, "LLM call failed after retries")
-
-    async def run_responses_async(
-        self,
-        *,
-        input_data: Any,
-        tools_payload: list[dict[str, Any]] | None,
-        model: str | None,
-        provider: str | None,
-        max_tokens: int | None,
-        stream: bool,
-        kwargs: dict[str, Any],
-        on_response: Callable[[Any, str, str, int], Any],
-    ) -> Any:
-        last_provider: str | None = None
-        last_model: str | None = None
-        last_error: RepublicError | None = None
-        for provider_name, model_id, client in self.iter_clients(model, provider):
-            last_provider, last_model = provider_name, model_id
-            for attempt in range(self.max_attempts()):
-                try:
-                    response = await client.aresponses(
-                        model=model_id,
-                        input_data=input_data,
-                        tools=tools_payload,
-                        stream=stream,
-                        **self._decide_responses_kwargs(max_tokens, kwargs),
+                        kwargs=kwargs,
                     )
                 except Exception as exc:
                     outcome = self._handle_attempt_error(exc, provider_name, model_id, attempt)

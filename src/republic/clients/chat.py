@@ -6,8 +6,7 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass
 from functools import partial
-from types import SimpleNamespace
-from typing import Any, Literal, NoReturn
+from typing import Any, NoReturn
 
 from republic.core.errors import ErrorKind, RepublicError
 from republic.core.execution import LLMCore
@@ -28,12 +27,6 @@ from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput, ToolSet, normalize_tools
 
 MessageInput = dict[str, Any]
-ApiMode = Literal["completion", "responses"]
-
-
-class InvalidApiModeError(ValueError):
-    def __init__(self) -> None:
-        super().__init__("api_mode must be 'completion' or 'responses'.")
 
 
 @dataclass(frozen=True)
@@ -165,11 +158,7 @@ class ToolCallAssembler:
                 entry["function"]["name"] = name
             arguments = getattr(func, "arguments", None)
             if arguments:
-                is_complete = bool(getattr(tool_call, "arguments_complete", False))
-                if is_complete:
-                    entry["function"]["arguments"] = arguments
-                else:
-                    entry["function"]["arguments"] = entry["function"].get("arguments", "") + arguments
+                entry["function"]["arguments"] = entry["function"].get("arguments", "") + arguments
 
     def finalize(self) -> list[dict[str, Any]]:
         return [self._calls[key] for key in self._order]
@@ -183,15 +172,10 @@ class ChatClient:
         core: LLMCore,
         tool_executor: ToolExecutor,
         tape: TapeManager,
-        *,
-        api_mode: ApiMode = "completion",
     ) -> None:
-        if api_mode not in ("completion", "responses"):
-            raise InvalidApiModeError
         self._core = core
         self._tool_executor = tool_executor
         self._tape = tape
-        self._api_mode = api_mode
 
     @property
     def default_context(self) -> TapeContext:
@@ -312,27 +296,12 @@ class ChatClient:
         provider: str | None,
         max_tokens: int | None,
         stream: bool,
-        tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
-        mode: ApiMode | None = None,
     ) -> Any:
         if prepared.context_error is not None:
             raise prepared.context_error
-        request_mode = mode or self._api_mode
-        responses_tools = self._to_responses_tools_payload(tools_payload)
         try:
-            if request_mode == "responses":
-                return self._core.run_responses_sync(
-                    input_data=prepared.payload,
-                    tools_payload=responses_tools,
-                    model=model,
-                    provider=provider,
-                    max_tokens=max_tokens,
-                    stream=stream,
-                    kwargs=kwargs,
-                    on_response=on_response,
-                )
             return self._core.run_chat_sync(
                 messages_payload=prepared.payload,
                 tools_payload=tools_payload,
@@ -341,7 +310,6 @@ class ChatClient:
                 max_tokens=max_tokens,
                 stream=stream,
                 reasoning_effort=None,
-                tool_count=tool_count,
                 kwargs=kwargs,
                 on_response=on_response,
             )
@@ -357,27 +325,12 @@ class ChatClient:
         provider: str | None,
         max_tokens: int | None,
         stream: bool,
-        tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
-        mode: ApiMode | None = None,
     ) -> Any:
         if prepared.context_error is not None:
             raise prepared.context_error
-        request_mode = mode or self._api_mode
-        responses_tools = self._to_responses_tools_payload(tools_payload)
         try:
-            if request_mode == "responses":
-                return await self._core.run_responses_async(
-                    input_data=prepared.payload,
-                    tools_payload=responses_tools,
-                    model=model,
-                    provider=provider,
-                    max_tokens=max_tokens,
-                    stream=stream,
-                    kwargs=kwargs,
-                    on_response=on_response,
-                )
             return await self._core.run_chat_async(
                 messages_payload=prepared.payload,
                 tools_payload=tools_payload,
@@ -386,53 +339,11 @@ class ChatClient:
                 max_tokens=max_tokens,
                 stream=stream,
                 reasoning_effort=None,
-                tool_count=tool_count,
                 kwargs=kwargs,
                 on_response=on_response,
             )
         except RepublicError as exc:
             raise ErrorPayload(exc.kind, exc.message) from exc
-
-    @staticmethod
-    def _to_responses_tools_payload(
-        tools_payload: list[dict[str, Any]] | None,
-    ) -> list[dict[str, Any]] | None:
-        if not tools_payload:
-            return None
-
-        payload: list[dict[str, Any]] = []
-        for tool in tools_payload:
-            function = tool.get("function")
-            if isinstance(function, dict):
-                converted = {
-                    "type": tool.get("type", "function"),
-                    "name": function.get("name"),
-                    "description": function.get("description", ""),
-                    "parameters": function.get("parameters", {}),
-                }
-                for key in ("strict",):
-                    if key in function:
-                        converted[key] = function[key]
-                payload.append(converted)
-                continue
-
-            payload.append(dict(tool))
-        return payload
-
-    @staticmethod
-    def _field(data: Any, key: str, default: Any = None) -> Any:
-        if isinstance(data, dict):
-            return data.get(key, default)
-        return getattr(data, key, default)
-
-    @classmethod
-    def _is_non_stream_response(cls, response: Any) -> bool:
-        return (
-            isinstance(response, str)
-            or cls._field(response, "choices") is not None
-            or cls._field(response, "output") is not None
-            or cls._field(response, "output_text") is not None
-        )
 
     def _normalize_tools(self, tools: ToolInput) -> ToolSet:
         try:
@@ -909,7 +820,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._handle_create_response, prepared),
             )
@@ -947,7 +857,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tool_calls_response, prepared),
             )
@@ -986,7 +895,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tools_auto_response, prepared),
             )
@@ -1022,7 +930,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._handle_create_response, prepared),
             )
@@ -1060,7 +967,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tool_calls_response, prepared),
             )
@@ -1099,7 +1005,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tools_auto_response_async, prepared),
             )
@@ -1135,7 +1040,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._build_text_stream, prepared),
             )
@@ -1171,7 +1075,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._build_async_text_stream, prepared),
             )
@@ -1208,7 +1111,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._build_event_stream, prepared),
             )
@@ -1245,7 +1147,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._build_async_event_stream, prepared),
             )
@@ -1260,7 +1161,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> TextStream:
-        if self._is_non_stream_response(response):
+        if hasattr(response, "choices"):
             text = self._extract_text(response)
             tool_calls = self._extract_tool_calls(response)
             state = StreamState()
@@ -1324,7 +1225,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> AsyncTextStream:
-        if self._is_non_stream_response(response):
+        if hasattr(response, "choices"):
             text = self._extract_text(response)
             tool_calls = self._extract_tool_calls(response)
             state = StreamState()
@@ -1390,58 +1291,23 @@ class ChatClient:
 
     @staticmethod
     def _extract_chunk_tool_call_deltas(chunk: Any) -> list[Any]:
-        event_type = ChatClient._field(chunk, "type")
-        if event_type == "response.function_call_arguments.delta":
-            delta = ChatClient._field(chunk, "delta")
-            item_id = ChatClient._field(chunk, "item_id")
-            if not isinstance(delta, str) or not item_id:
-                return []
-            return [
-                SimpleNamespace(
-                    id=item_id,
-                    type="function",
-                    function=SimpleNamespace(name="", arguments=delta),
-                )
-            ]
-        if event_type == "response.function_call_arguments.done":
-            item_id = ChatClient._field(chunk, "item_id")
-            name = ChatClient._field(chunk, "name")
-            arguments = ChatClient._field(chunk, "arguments")
-            if not item_id or not isinstance(arguments, str):
-                return []
-            return [
-                SimpleNamespace(
-                    id=item_id,
-                    type="function",
-                    function=SimpleNamespace(name=name or "", arguments=arguments),
-                    arguments_complete=True,
-                )
-            ]
-
-        choices = ChatClient._field(chunk, "choices")
+        choices = getattr(chunk, "choices", None)
         if not choices:
             return []
-        delta = ChatClient._field(choices[0], "delta")
+        delta = getattr(choices[0], "delta", None)
         if delta is None:
             return []
-        return ChatClient._field(delta, "tool_calls") or []
+        return getattr(delta, "tool_calls", None) or []
 
     @staticmethod
     def _extract_chunk_text(chunk: Any) -> str:
-        event_type = ChatClient._field(chunk, "type")
-        if event_type == "response.output_text.delta":
-            delta = ChatClient._field(chunk, "delta")
-            if isinstance(delta, str):
-                return delta
-            return ""
-
-        choices = ChatClient._field(chunk, "choices")
+        choices = getattr(chunk, "choices", None)
         if not choices:
             return ""
-        delta = ChatClient._field(choices[0], "delta")
+        delta = getattr(choices[0], "delta", None)
         if delta is None:
             return ""
-        return ChatClient._field(delta, "content", "") or ""
+        return getattr(delta, "content", "") or ""
 
     def _build_event_stream(
         self,
@@ -1451,7 +1317,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> StreamEvents:
-        if self._is_non_stream_response(response):
+        if hasattr(response, "choices"):
             return self._build_event_stream_from_response(
                 prepared,
                 response,
@@ -1524,7 +1390,7 @@ class ChatClient:
         model_id: str,
         attempt: int,
     ) -> AsyncStreamEvents:
-        if self._is_non_stream_response(response):
+        if hasattr(response, "choices"):
             return self._build_async_event_stream_from_response(
                 prepared,
                 response,
@@ -1757,88 +1623,81 @@ class ChatClient:
     def _extract_text(response: Any) -> str:
         if isinstance(response, str):
             return response
-        output_text = ChatClient._field(response, "output_text")
-        if isinstance(output_text, str):
-            return output_text
-        choices = ChatClient._field(response, "choices")
+        output = getattr(response, "output", None)
+        if output:
+            parts: list[str] = []
+            for item in output:
+                if getattr(item, "type", None) != "message":
+                    continue
+                content = getattr(item, "content", None) or []
+                for entry in content:
+                    if getattr(entry, "type", None) == "output_text":
+                        text = getattr(entry, "text", None)
+                        if text:
+                            parts.append(text)
+            return "".join(parts)
+        choices = getattr(response, "choices", None)
         if not choices:
             return ""
-        message = ChatClient._field(choices[0], "message")
+        message = getattr(choices[0], "message", None)
         if message is None:
             return ""
-        return ChatClient._field(message, "content", "") or ""
+        return getattr(message, "content", "") or ""
 
     @staticmethod
-    def _extract_responses_tool_calls(output_items: Any) -> list[dict[str, Any]]:
-        if output_items is None:
-            return []
+    def _extract_tool_calls(response: Any) -> list[dict[str, Any]]:
+        output = getattr(response, "output", None)
+        if output:
+            return ChatClient._extract_responses_tool_calls(output)
+        return ChatClient._extract_completion_tool_calls(response)
 
+    @staticmethod
+    def _extract_responses_tool_calls(output: list[Any]) -> list[dict[str, Any]]:
         calls: list[dict[str, Any]] = []
-        for item in output_items:
-            item_type = ChatClient._field(item, "type")
-            if item_type != "function_call":
+        for item in output:
+            if getattr(item, "type", None) != "function_call":
                 continue
-            name = ChatClient._field(item, "name")
-            arguments = ChatClient._field(item, "arguments")
-            if not name or arguments is None:
+            name = getattr(item, "name", None)
+            arguments = getattr(item, "arguments", None)
+            if not name:
                 continue
-            entry: dict[str, Any] = {
-                "function": {
-                    "name": name,
-                    "arguments": arguments,
-                },
-                "type": "function",
-            }
-            call_id = ChatClient._field(item, "call_id") or ChatClient._field(item, "id")
+            entry: dict[str, Any] = {"function": {"name": name, "arguments": arguments or ""}}
+            call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
             if call_id:
                 entry["id"] = call_id
+            entry["type"] = "function"
             calls.append(entry)
         return calls
 
     @staticmethod
     def _extract_completion_tool_calls(response: Any) -> list[dict[str, Any]]:
-        choices = ChatClient._field(response, "choices")
+        choices = getattr(response, "choices", None)
         if not choices:
             return []
-        message = ChatClient._field(choices[0], "message")
+        message = getattr(choices[0], "message", None)
         if message is None:
             return []
-        tool_calls = ChatClient._field(message, "tool_calls") or []
+        tool_calls = getattr(message, "tool_calls", None) or []
         calls: list[dict[str, Any]] = []
         for tool_call in tool_calls:
-            function = ChatClient._field(tool_call, "function")
-            if function is None:
-                continue
             entry: dict[str, Any] = {
                 "function": {
-                    "name": ChatClient._field(function, "name"),
-                    "arguments": ChatClient._field(function, "arguments"),
+                    "name": tool_call.function.name,
+                    "arguments": tool_call.function.arguments,
                 }
             }
-            call_id = ChatClient._field(tool_call, "id")
+            call_id = getattr(tool_call, "id", None)
             if call_id:
                 entry["id"] = call_id
-            call_type = ChatClient._field(tool_call, "type")
+            call_type = getattr(tool_call, "type", None)
             if call_type:
                 entry["type"] = call_type
             calls.append(entry)
         return calls
 
-    @classmethod
-    def _extract_tool_calls(cls, response: Any) -> list[dict[str, Any]]:
-        output_items = cls._field(response, "output")
-        if output_items is not None:
-            return cls._extract_responses_tool_calls(output_items)
-        return cls._extract_completion_tool_calls(response)
-
     @staticmethod
     def _extract_usage(response: Any) -> dict[str, Any] | None:
-        event_type = ChatClient._field(response, "type")
-        if event_type == "response.completed":
-            completed_response = ChatClient._field(response, "response")
-            usage = ChatClient._field(completed_response, "usage")
-        else:
-            usage = ChatClient._field(response, "usage")
+        usage = getattr(response, "usage", None)
         if usage is None:
             return None
         if hasattr(usage, "model_dump"):

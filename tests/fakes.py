@@ -11,6 +11,8 @@ class FakeQueueEmptyError(AssertionError):
 
 
 class FakeAnyLLMClient:
+    SUPPORTS_RESPONSES = True
+
     def __init__(self, provider: str) -> None:
         self.provider = provider
         self.calls: list[dict[str, Any]] = []
@@ -57,11 +59,11 @@ class FakeAnyLLMClient:
         return self._next(queue, "acompletion")
 
     def responses(self, **kwargs: Any) -> Any:
-        self.calls.append(dict(kwargs))
+        self.calls.append({"responses": True, **dict(kwargs)})
         return self._next(self.responses_queue, "responses")
 
     async def aresponses(self, **kwargs: Any) -> Any:
-        self.calls.append(dict(kwargs))
+        self.calls.append({"responses": True, **dict(kwargs)})
         queue = self.aresponses_queue if self.aresponses_queue else self.responses_queue
         return self._next(queue, "aresponses")
 
@@ -124,51 +126,26 @@ def make_chunk(
     return SimpleNamespace(choices=[choice], usage=usage)
 
 
-def make_responses_tool_call(
-    name: str,
-    arguments: dict[str, Any] | str,
-    *,
-    call_id: str | None = "call_1",
-) -> Any:
-    return SimpleNamespace(
-        type="function_call",
-        name=name,
-        arguments=arguments,
-        call_id=call_id,
-    )
+def make_responses_output_text(text: str) -> Any:
+    return SimpleNamespace(type="output_text", text=text)
+
+
+def make_responses_message(text: str) -> Any:
+    return SimpleNamespace(type="message", content=[make_responses_output_text(text)])
+
+
+def make_responses_function_call(name: str, arguments: str, call_id: str = "call_1") -> Any:
+    return SimpleNamespace(type="function_call", name=name, arguments=arguments, call_id=call_id)
 
 
 def make_responses_response(
     *,
     text: str = "",
     tool_calls: list[Any] | None = None,
-    usage: dict[str, Any] | None = None,
 ) -> Any:
-    return SimpleNamespace(
-        output_text=text,
-        output=tool_calls or [],
-        usage=usage,
-    )
-
-
-def make_responses_text_delta(delta: str) -> Any:
-    return SimpleNamespace(type="response.output_text.delta", delta=delta)
-
-
-def make_responses_function_delta(delta: str, *, item_id: str = "call_1") -> Any:
-    return SimpleNamespace(type="response.function_call_arguments.delta", delta=delta, item_id=item_id, output_index=0)
-
-
-def make_responses_function_done(name: str, arguments: str, *, item_id: str = "call_1") -> Any:
-    return SimpleNamespace(
-        type="response.function_call_arguments.done",
-        name=name,
-        arguments=arguments,
-        item_id=item_id,
-        output_index=0,
-    )
-
-
-def make_responses_completed(usage: dict[str, Any] | None = None) -> Any:
-    response = SimpleNamespace(usage=usage)
-    return SimpleNamespace(type="response.completed", response=response)
+    output: list[Any] = []
+    if text:
+        output.append(make_responses_message(text))
+    if tool_calls:
+        output.extend(tool_calls)
+    return SimpleNamespace(output=output)

@@ -8,17 +8,7 @@ from republic import LLM, tool
 from republic.core.errors import ErrorKind
 from republic.core.results import ErrorPayload
 
-from .fakes import (
-    make_chunk,
-    make_response,
-    make_responses_completed,
-    make_responses_function_delta,
-    make_responses_function_done,
-    make_responses_response,
-    make_responses_text_delta,
-    make_responses_tool_call,
-    make_tool_call,
-)
+from .fakes import make_chunk, make_response, make_tool_call
 
 
 def test_chat_retries_and_returns_text(fake_anyllm) -> None:
@@ -231,106 +221,6 @@ def test_stream_events_merges_tool_deltas_without_id_or_index(fake_anyllm) -> No
     assert stream.usage == {"total_tokens": 9}
 
 
-def test_responses_mode_chat_and_run_tools(fake_anyllm) -> None:
-    client = fake_anyllm.ensure("openrouter")
-    client.queue_responses(
-        make_responses_response(text="ready"),
-        make_responses_response(tool_calls=[make_responses_tool_call("echo", '{"text":"tokyo"}', call_id="call_r1")]),
-    )
-
-    llm = LLM(model="openrouter:openrouter/free", api_key="dummy", api_mode="responses")
-    out = llm.chat("Reply with ready")
-    result = llm.run_tools("Call echo for tokyo", tools=[echo])
-
-    assert out == "ready"
-    assert result.kind == "tools"
-    assert result.tool_results == ["TOKYO"]
-    assert result.error is None
-    assert client.calls[0]["input_data"] == [{"role": "user", "content": "Reply with ready"}]
-    assert client.calls[1]["tools"][0]["type"] == "function"
-    assert client.calls[1]["tools"][0]["name"] == "echo"
-    assert client.calls[1]["tools"][0]["description"] == ""
-    assert client.calls[1]["tools"][0]["parameters"]["required"] == ["text"]
-    assert client.calls[1]["tools"][0]["parameters"]["properties"]["text"]["type"] == "string"
-
-
-def test_responses_mode_accepts_dict_response_shape(fake_anyllm) -> None:
-    client = fake_anyllm.ensure("openrouter")
-    client.queue_responses({
-        "output_text": "",
-        "output": [
-            {
-                "type": "function_call",
-                "name": "echo",
-                "arguments": '{"text":"tokyo"}',
-                "call_id": "call_dict_1",
-            }
-        ],
-        "usage": {"total_tokens": 5},
-    })
-
-    llm = LLM(model="openrouter:openrouter/free", api_key="dummy", api_mode="responses")
-    result = llm.run_tools("Call echo for tokyo", tools=[echo])
-
-    assert result.kind == "tools"
-    assert result.tool_results == ["TOKYO"]
-    assert result.error is None
-
-
-def test_stream_events_supports_responses_events_shape(fake_anyllm) -> None:
-    client = fake_anyllm.ensure("openrouter")
-    client.queue_responses(
-        iter([
-            make_responses_text_delta("Checking "),
-            make_responses_function_delta('{"text":"to', item_id="call_rsp_1"),
-            make_responses_function_delta('kyo"}', item_id="call_rsp_1"),
-            make_responses_function_done("echo", '{"text":"tokyo"}', item_id="call_rsp_1"),
-            make_responses_completed({"total_tokens": 12}),
-        ])
-    )
-
-    llm = LLM(model="openrouter:openrouter/free", api_key="dummy", api_mode="responses")
-    stream = llm.stream_events("Call echo for tokyo", tools=[echo])
-    events = list(stream)
-
-    kinds = [event.kind for event in events]
-    assert "text" in kinds
-    assert "tool_call" in kinds
-    assert "tool_result" in kinds
-    assert "usage" in kinds
-    assert kinds[-1] == "final"
-
-    tool_calls = [event for event in events if event.kind == "tool_call"]
-    assert len(tool_calls) == 1
-    assert tool_calls[0].data["call"]["function"]["name"] == "echo"
-    assert tool_calls[0].data["call"]["function"]["arguments"] == '{"text":"tokyo"}'
-
-    tool_results = [event for event in events if event.kind == "tool_result"]
-    assert len(tool_results) == 1
-    assert tool_results[0].data["result"] == "TOKYO"
-    assert stream.error is None
-    assert stream.usage == {"total_tokens": 12}
-
-
-def test_stream_supports_responses_text_deltas(fake_anyllm) -> None:
-    client = fake_anyllm.ensure("openrouter")
-    client.queue_responses(
-        iter([
-            make_responses_text_delta("Hello"),
-            make_responses_text_delta(" world"),
-            make_responses_completed({"total_tokens": 7}),
-        ])
-    )
-
-    llm = LLM(model="openrouter:openrouter/free", api_key="dummy", api_mode="responses")
-    stream = llm.stream("Say hello")
-    text = "".join(list(stream))
-
-    assert text == "Hello world"
-    assert stream.error is None
-    assert stream.usage == {"total_tokens": 7}
-
-
 @pytest.mark.asyncio
 async def test_run_tools_async_executes_async_tool_handler(fake_anyllm) -> None:
     client = fake_anyllm.ensure("openai")
@@ -342,39 +232,6 @@ async def test_run_tools_async_executes_async_tool_handler(fake_anyllm) -> None:
     assert result.kind == "tools"
     assert result.tool_results == ["TOKYO"]
     assert result.error is None
-
-
-@pytest.mark.asyncio
-async def test_responses_mode_async_chat_tool_calls_and_stream(fake_anyllm) -> None:
-    async def _astream() -> object:
-        for item in [
-            make_responses_text_delta("Hello"),
-            make_responses_text_delta(" async"),
-            make_responses_completed({"total_tokens": 9}),
-        ]:
-            yield item
-
-    client = fake_anyllm.ensure("openrouter")
-    client.queue_aresponses(
-        make_responses_response(text="pong"),
-        make_responses_response(tool_calls=[make_responses_tool_call("echo", '{"text":"tokyo"}', call_id="call_a1")]),
-        _astream(),
-    )
-
-    llm = LLM(model="openrouter:openrouter/free", api_key="dummy", api_mode="responses")
-
-    text = await llm.chat_async("Reply with pong")
-    calls = await llm.tool_calls_async("Use echo for tokyo", tools=[echo])
-    stream = await llm.stream_async("Say hello async")
-    streamed = "".join([chunk async for chunk in stream])
-
-    assert text == "pong"
-    assert len(calls) == 1
-    assert calls[0]["function"]["name"] == "echo"
-    assert calls[0]["function"]["arguments"] == '{"text":"tokyo"}'
-    assert streamed == "Hello async"
-    assert stream.error is None
-    assert stream.usage == {"total_tokens": 9}
 
 
 @pytest.mark.asyncio
