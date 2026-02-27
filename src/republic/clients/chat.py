@@ -298,7 +298,6 @@ class ChatClient:
         provider: str | None,
         max_tokens: int | None,
         stream: bool,
-        tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
     ) -> Any:
@@ -313,7 +312,6 @@ class ChatClient:
                 max_tokens=max_tokens,
                 stream=stream,
                 reasoning_effort=None,
-                tool_count=tool_count,
                 kwargs=kwargs,
                 on_response=on_response,
             )
@@ -329,7 +327,6 @@ class ChatClient:
         provider: str | None,
         max_tokens: int | None,
         stream: bool,
-        tool_count: int,
         kwargs: dict[str, Any],
         on_response: Callable[[Any, str, str, int], Any],
     ) -> Any:
@@ -344,7 +341,6 @@ class ChatClient:
                 max_tokens=max_tokens,
                 stream=stream,
                 reasoning_effort=None,
-                tool_count=tool_count,
                 kwargs=kwargs,
                 on_response=on_response,
             )
@@ -826,7 +822,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._handle_create_response, prepared),
             )
@@ -864,7 +859,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tool_calls_response, prepared),
             )
@@ -903,7 +897,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tools_auto_response, prepared),
             )
@@ -939,7 +932,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._handle_create_response, prepared),
             )
@@ -977,7 +969,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tool_calls_response, prepared),
             )
@@ -1016,7 +1007,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=False,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._handle_tools_auto_response_async, prepared),
             )
@@ -1052,7 +1042,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._build_text_stream, prepared),
             )
@@ -1088,7 +1077,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=0,
                 kwargs=kwargs,
                 on_response=partial(self._build_async_text_stream, prepared),
             )
@@ -1125,7 +1113,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._build_event_stream, prepared),
             )
@@ -1162,7 +1149,6 @@ class ChatClient:
                 provider=provider,
                 max_tokens=max_tokens,
                 stream=True,
-                tool_count=len(prepared.toolset.payload or []),
                 kwargs=kwargs,
                 on_response=partial(self._build_async_event_stream, prepared),
             )
@@ -1639,6 +1625,19 @@ class ChatClient:
     def _extract_text(response: Any) -> str:
         if isinstance(response, str):
             return response
+        output = getattr(response, "output", None)
+        if output:
+            parts: list[str] = []
+            for item in output:
+                if getattr(item, "type", None) != "message":
+                    continue
+                content = getattr(item, "content", None) or []
+                for entry in content:
+                    if getattr(entry, "type", None) == "output_text":
+                        text = getattr(entry, "text", None)
+                        if text:
+                            parts.append(text)
+            return "".join(parts)
         choices = getattr(response, "choices", None)
         if not choices:
             return ""
@@ -1649,6 +1648,31 @@ class ChatClient:
 
     @staticmethod
     def _extract_tool_calls(response: Any) -> list[dict[str, Any]]:
+        output = getattr(response, "output", None)
+        if output:
+            return ChatClient._extract_responses_tool_calls(output)
+        return ChatClient._extract_completion_tool_calls(response)
+
+    @staticmethod
+    def _extract_responses_tool_calls(output: list[Any]) -> list[dict[str, Any]]:
+        calls: list[dict[str, Any]] = []
+        for item in output:
+            if getattr(item, "type", None) != "function_call":
+                continue
+            name = getattr(item, "name", None)
+            arguments = getattr(item, "arguments", None)
+            if not name:
+                continue
+            entry: dict[str, Any] = {"function": {"name": name, "arguments": arguments or ""}}
+            call_id = getattr(item, "call_id", None) or getattr(item, "id", None)
+            if call_id:
+                entry["id"] = call_id
+            entry["type"] = "function"
+            calls.append(entry)
+        return calls
+
+    @staticmethod
+    def _extract_completion_tool_calls(response: Any) -> list[dict[str, Any]]:
         choices = getattr(response, "choices", None)
         if not choices:
             return []
