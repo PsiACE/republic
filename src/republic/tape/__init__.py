@@ -5,9 +5,10 @@ from republic.tape.entries import TapeEntry
 from republic.tape.manager import TapeManager
 from republic.tape.query import TapeQuery
 from republic.tape.session import Tape
-from republic.tape.store import InMemoryTapeStore, TapeStore
+from republic.tape.store import InMemoryQueryMixin, InMemoryTapeStore, TapeStore
 
 __all__ = [
+    "InMemoryQueryMixin",
     "InMemoryTapeStore",
     "Tape",
     "TapeContext",

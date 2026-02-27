@@ -39,6 +39,7 @@ class PreparedChat:
     context_error: ErrorPayload | None
     run_id: str
     system_prompt: str | None
+    context: TapeContext | None
 
 
 class ToolCallAssembler:
@@ -285,6 +286,7 @@ class ChatClient:
             context_error=context_error,
             run_id=run_id,
             system_prompt=system_prompt,
+            context=context,
         )
 
     def _execute_sync(
@@ -1616,7 +1618,7 @@ class ChatClient:
             tape=prepared.tape,
             run_id=prepared.run_id,
             meta={"provider": provider_name, "model": model_id},
-            state={},
+            state={} if prepared.context is None else prepared.context.state,
         )
 
     @staticmethod

@@ -27,21 +27,21 @@ def main() -> None:
     # Tape default context uses the latest anchor, so handoff first.
     tape.handoff("network_issue", state={"owner": "tier1"})
     out1 = tape.chat("Customer cannot connect to VPN. Give triage steps.", max_tokens=64)
-    print("reply1:", out1.value, out1.error)
+    print("reply1:", out1)
 
     out2 = tape.chat("Also include DNS checks.", max_tokens=64)
-    print("reply2:", out2.value, out2.error)
+    print("reply2:", out2)
 
     tape.handoff("billing_issue", state={"owner": "tier2"})
     out3 = tape.chat("Customer asks for refund process.", max_tokens=64)
-    print("reply3:", out3.value, out3.error)
+    print("reply3:", out3)
 
-    network_entries = tape.query().after_anchor("network_issue").all()
-    print("after network_issue:", [entry.kind for entry in network_entries.entries])
+    network_entries = tape.query.after_anchor("network_issue").all()
+    print("after network_issue:", [entry.kind for entry in network_entries])
 
     # Switch context to read full history from the tape.
     tape.context = TapeContext(anchor=None)
-    print("message_count:", len(tape.read_messages().messages))
+    print("message_count:", len(tape.read_messages()))
 
 
 if __name__ == "__main__":

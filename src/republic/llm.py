@@ -430,9 +430,6 @@ class LLM:
     def handoff(self, tape: str, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
         return self._tape.handoff(tape, name, state=state, **meta)
 
-    def read_entries(self, tape: str) -> list[TapeEntry]:
-        return self._tape.read_entries(tape)
-
     def read_messages(self, tape: str, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         return self._tape.read_messages(tape, context=context)
 
