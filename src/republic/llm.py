@@ -38,6 +38,7 @@ class LLM:
         api_key: str | dict[str, str] | None = None,
         api_base: str | dict[str, str] | None = None,
         client_args: dict[str, Any] | None = None,
+        use_responses: bool = False,
         verbose: int = 0,
         tape_store: TapeStore | None = None,
         context: TapeContext | None = None,
@@ -62,6 +63,7 @@ class LLM:
             api_key=api_key,
             api_base=api_base,
             client_args=client_args or {},
+            use_responses=use_responses,
             verbose=verbose,
             error_classifier=error_classifier,
         )
