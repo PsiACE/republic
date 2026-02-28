@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,9 +17,10 @@ class TapeEntry:
     kind: str
     payload: dict[str, Any]
     meta: dict[str, Any] = field(default_factory=dict)
+    timestamp: float = field(default_factory=time.time)
 
     def copy(self) -> TapeEntry:
-        return TapeEntry(self.id, self.kind, dict(self.payload), dict(self.meta))
+        return TapeEntry(self.id, self.kind, dict(self.payload), dict(self.meta), self.timestamp)
 
     @classmethod
     def message(cls, message: dict[str, Any], **meta: Any) -> TapeEntry:
