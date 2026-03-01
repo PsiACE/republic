@@ -1,10 +1,10 @@
 # Republic
 
-[![Release](https://img.shields.io/github/v/release/psiace/republic)](https://img.shields.io/github/v/release/psiace/republic)
-[![Build status](https://img.shields.io/github/actions/workflow/status/psiace/republic/main.yml?branch=main)](https://github.com/psiace/republic/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/psiace/republic/branch/main/graph/badge.svg)](https://codecov.io/gh/psiace/republic)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/psiace/republic)](https://img.shields.io/github/commit-activity/m/psiace/republic)
-[![License](https://img.shields.io/github/license/psiace/republic)](https://img.shields.io/github/license/psiace/republic)
+[![Release](https://img.shields.io/github/v/release/bubbuild/republic)](https://img.shields.io/github/v/release/bubbuild/republic)
+[![Build status](https://img.shields.io/github/actions/workflow/status/bubbuild/republic/main.yml?branch=main)](https://github.com/bubbuild/republic/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/bubbuild/republic/branch/main/graph/badge.svg)](https://codecov.io/gh/bubbuild/republic)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/bubbuild/republic)](https://img.shields.io/github/commit-activity/m/bubbuild/republic)
+[![License](https://img.shields.io/github/license/bubbuild/republic)](https://img.shields.io/github/license/bubbuild/republic)
 
 Build LLM workflows like normal Python while keeping a full audit trail by default.
 
