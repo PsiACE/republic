@@ -48,7 +48,7 @@ class LLM:
         api_key: str | dict[str, str] | None = None,
         api_base: str | dict[str, str] | None = None,
         client_args: dict[str, Any] | None = None,
-        api_format: Literal["completion", "responses", "anthropic_messages"] = "completion",
+        api_format: Literal["completion", "responses", "messages"] = "completion",
         verbose: int = 0,
         tape_store: TapeStore | AsyncTapeStore | None = None,
         context: TapeContext | None = None,
@@ -58,10 +58,10 @@ class LLM:
             raise RepublicError(ErrorKind.INVALID_INPUT, "verbose must be 0, 1, or 2")
         if max_retries < 0:
             raise RepublicError(ErrorKind.INVALID_INPUT, "max_retries must be >= 0")
-        if api_format not in {"completion", "responses", "anthropic_messages"}:
+        if api_format not in {"completion", "responses", "messages"}:
             raise RepublicError(
                 ErrorKind.INVALID_INPUT,
-                "api_format must be 'completion', 'responses', or 'anthropic_messages'",
+                "api_format must be 'completion', 'responses', or 'messages'",
             )
 
         if not model:
