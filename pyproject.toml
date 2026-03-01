@@ -2,7 +2,10 @@
 name = "republic"
 version = "0.5.2"
 description = "Build LLM workflows like normal Python while keeping a full audit trail by default."
-authors = [{ name = "Chojan Shang", email = "psiace@apache.org" }]
+authors = [
+    { name = "Chojan Shang", email = "psiace@apache.org" },
+    { name = "Frost Ming", email = "me@frostming.com" },
+]
 readme = "README.md"
 keywords = [
     "ai",
@@ -34,9 +37,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://psiace.github.io/republic/"
-Repository = "https://github.com/psiace/republic"
-Documentation = "https://psiace.github.io/republic/"
+Homepage = "https://getrepublic.org"
+Repository = "https://github.com/bubbuild/republic"
+Documentation = "https://getrepublic.org"
 
 [dependency-groups]
 dev = [

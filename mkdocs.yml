@@ -1,11 +1,11 @@
 site_name: republic
-repo_url: https://github.com/psiace/republic
+repo_url: https://github.com/bubbuild/republic
 site_url: https://getrepublic.org
 site_description: Tape-first LLM client with structured outputs.
-site_author: Chojan Shang
+site_author: Bub Build
 edit_uri: edit/main/docs/
-repo_name: psiace/republic
-copyright: Maintained by <a href="https://psiace.com">psiace</a>.
+repo_name: bubbuild/republic
+copyright: Copyright (c) 2026 Bub Build contributors.
 
 nav:
   - Home: index.md
@@ -33,7 +33,7 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/psiace/republic
+      link: https://github.com/bubbuild/republic
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/republic
 
