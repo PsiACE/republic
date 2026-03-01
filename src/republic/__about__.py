@@ -1,6 +1,6 @@
 DEFAULT_MODEL = "openai:gpt-4o-mini"
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 __author__ = "PsiACE"
 __author_email__ = "psiace@apache.org"
 __copyright__ = f"Copyright (c) 2026, {__author__}."
