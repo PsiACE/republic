@@ -17,24 +17,19 @@ from republic.tape.query import TapeQuery
 from republic.tools.schema import ToolInput
 
 if TYPE_CHECKING:
-    from republic.llm import LLM
-    from republic.tape.manager import TapeManager
+    from republic.clients.chat import ChatClient
 
 
-class Tape:
-    """A scoped LLM session that interacts with a specific tape."""
-
+class _TapeBase:
     def __init__(
         self,
         name: str,
-        manager: TapeManager,
         *,
-        llm: LLM,
+        chat_client: ChatClient,
         context: TapeContext | None = None,
     ) -> None:
         self._name = name
-        self._manager = manager
-        self._llm = llm
+        self._client = chat_client
         self._local_context = context
 
     def __repr__(self) -> str:
@@ -46,28 +41,32 @@ class Tape:
 
     @property
     def context(self) -> TapeContext:
-        return self._local_context or self._manager.default_context
+        return self._local_context or self._client.default_context
 
     @context.setter
     def context(self, value: TapeContext | None) -> None:
         self._local_context = value
 
+
+class Tape(_TapeBase):
+    """A scoped LLM session that interacts with a specific tape."""
+
     def read_messages(self, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         active_context = context or self.context
-        return self._manager.read_messages(self._name, context=active_context)
+        return self._client._tape.read_messages(self._name, context=active_context)
 
     def append(self, entry: TapeEntry) -> None:
-        self._manager.append_entry(self._name, entry)
+        self._client._tape.append_entry(self._name, entry)
 
     @property
     def query(self) -> TapeQuery:
-        return self._manager.query_tape(self._name)
+        return self._client._tape.query_tape(self._name)
 
     def reset(self) -> None:
-        self._manager.reset_tape(self._name)
+        self._client._tape.reset_tape(self._name)
 
     def handoff(self, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
-        return self._manager.handoff(self._name, name, state=state, **meta)
+        return self._client._tape.handoff(self._name, name, state=state, **meta)
 
     def chat(
         self,
@@ -80,30 +79,7 @@ class Tape:
         max_tokens: int | None = None,
         **kwargs: Any,
     ) -> str:
-        return self._llm.chat(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            tape=self._name,
-            context=self.context,
-            **kwargs,
-        )
-
-    async def chat_async(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[dict[str, Any]] | None = None,
-        max_tokens: int | None = None,
-        **kwargs: Any,
-    ) -> str:
-        return await self._llm.chat_async(
+        return self._client.chat(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
@@ -127,32 +103,7 @@ class Tape:
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> list[dict[str, Any]]:
-        return self._llm.tool_calls(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            tape=self._name,
-            context=self.context,
-            tools=tools,
-            **kwargs,
-        )
-
-    async def tool_calls_async(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[dict[str, Any]] | None = None,
-        max_tokens: int | None = None,
-        tools: ToolInput = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        return await self._llm.tool_calls_async(
+        return self._client.tool_calls(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
@@ -177,7 +128,116 @@ class Tape:
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> ToolAutoResult:
-        return self._llm.run_tools(
+        return self._client.run_tools(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            tape=self._name,
+            context=self.context,
+            tools=tools,
+            **kwargs,
+        )
+
+    def stream(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> TextStream:
+        return self._client.stream(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            tape=self._name,
+            context=self.context,
+            **kwargs,
+        )
+
+    def stream_events(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        tools: ToolInput = None,
+        **kwargs: Any,
+    ) -> StreamEvents:
+        return self._client.stream_events(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            tape=self._name,
+            context=self.context,
+            tools=tools,
+            **kwargs,
+        )
+
+    async def read_messages_async(self, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
+        active_context = context or self.context
+        return await self._client._async_tape.read_messages(self._name, context=active_context)
+
+    async def append_async(self, entry: TapeEntry) -> None:
+        await self._client._async_tape.append_entry(self._name, entry)
+
+    async def reset_async(self) -> None:
+        await self._client._async_tape.reset_tape(self._name)
+
+    async def handoff_async(self, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
+        return await self._client._async_tape.handoff(self._name, name, state=state, **meta)
+
+    async def chat_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        **kwargs: Any,
+    ) -> str:
+        return await self._client.chat_async(
+            prompt=prompt,
+            system_prompt=system_prompt,
+            model=model,
+            provider=provider,
+            messages=messages,
+            max_tokens=max_tokens,
+            tape=self._name,
+            context=self.context,
+            **kwargs,
+        )
+
+    async def tool_calls_async(
+        self,
+        prompt: str | None = None,
+        *,
+        system_prompt: str | None = None,
+        model: str | None = None,
+        provider: str | None = None,
+        messages: list[dict[str, Any]] | None = None,
+        max_tokens: int | None = None,
+        tools: ToolInput = None,
+        **kwargs: Any,
+    ) -> list[dict[str, Any]]:
+        return await self._client.tool_calls_async(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
@@ -202,7 +262,7 @@ class Tape:
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> ToolAutoResult:
-        return await self._llm.run_tools_async(
+        return await self._client.run_tools_async(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
@@ -212,29 +272,6 @@ class Tape:
             tape=self._name,
             context=self.context,
             tools=tools,
-            **kwargs,
-        )
-
-    def stream(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[dict[str, Any]] | None = None,
-        max_tokens: int | None = None,
-        **kwargs: Any,
-    ) -> TextStream:
-        return self._llm.stream(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            tape=self._name,
-            context=self.context,
             **kwargs,
         )
 
@@ -249,7 +286,7 @@ class Tape:
         max_tokens: int | None = None,
         **kwargs: Any,
     ) -> AsyncTextStream:
-        return await self._llm.stream_async(
+        return await self._client.stream_async(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,
@@ -258,31 +295,6 @@ class Tape:
             max_tokens=max_tokens,
             tape=self._name,
             context=self.context,
-            **kwargs,
-        )
-
-    def stream_events(
-        self,
-        prompt: str | None = None,
-        *,
-        system_prompt: str | None = None,
-        model: str | None = None,
-        provider: str | None = None,
-        messages: list[dict[str, Any]] | None = None,
-        max_tokens: int | None = None,
-        tools: ToolInput = None,
-        **kwargs: Any,
-    ) -> StreamEvents:
-        return self._llm.stream_events(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            model=model,
-            provider=provider,
-            messages=messages,
-            max_tokens=max_tokens,
-            tape=self._name,
-            context=self.context,
-            tools=tools,
             **kwargs,
         )
 
@@ -298,7 +310,7 @@ class Tape:
         tools: ToolInput = None,
         **kwargs: Any,
     ) -> AsyncStreamEvents:
-        return await self._llm.stream_events_async(
+        return await self._client.stream_events_async(
             prompt=prompt,
             system_prompt=system_prompt,
             model=model,

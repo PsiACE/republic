@@ -4,9 +4,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from republic import LLM, tool
+from republic import LLM, TapeContext, tool
 from republic.core.errors import ErrorKind
 from republic.core.results import ErrorPayload
+from republic.tape.store import AsyncTapeStoreAdapter, InMemoryTapeStore
 
 from .fakes import make_chunk, make_response, make_tool_call
 
@@ -232,6 +233,90 @@ async def test_run_tools_async_executes_async_tool_handler(fake_anyllm) -> None:
     assert result.kind == "tools"
     assert result.tool_results == ["TOKYO"]
     assert result.error is None
+
+
+@pytest.mark.asyncio
+async def test_chat_async_with_async_tape_store_uses_async_tape_manager(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openai")
+    client.queue_completion(make_response(text="step one"), make_response(text="step two"))
+
+    llm = LLM(
+        model="openai:gpt-4o-mini",
+        api_key="dummy",
+        tape_store=AsyncTapeStoreAdapter(InMemoryTapeStore()),
+        context=TapeContext(anchor=None),
+    )
+
+    first = await llm.chat_async("Investigate DB timeout", tape="ops")
+    second = await llm.chat_async("Include rollback criteria", tape="ops")
+
+    assert first == "step one"
+    assert second == "step two"
+    second_messages = client.calls[-1]["messages"]
+    assert [message["role"] for message in second_messages] == ["user", "assistant", "user"]
+
+
+@pytest.mark.asyncio
+async def test_stream_async_with_async_tape_store_persists_history(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openai")
+    client.queue_completion(
+        make_response(text="step one"),
+        make_response(text="step two"),
+    )
+
+    llm = LLM(
+        model="openai:gpt-4o-mini",
+        api_key="dummy",
+        tape_store=AsyncTapeStoreAdapter(InMemoryTapeStore()),
+        context=TapeContext(anchor=None),
+    )
+
+    stream = await llm.stream_async("Investigate DB timeout", tape="ops")
+    first = "".join([part async for part in stream])
+    second = await llm.chat_async("Include rollback criteria", tape="ops")
+
+    assert first == "step one"
+    assert second == "step two"
+    second_messages = client.calls[-1]["messages"]
+    assert [message["role"] for message in second_messages] == ["user", "assistant", "user"]
+
+
+@pytest.mark.asyncio
+async def test_tool_calls_async_with_async_tape_store_keeps_user_history(fake_anyllm) -> None:
+    client = fake_anyllm.ensure("openai")
+    client.queue_completion(
+        make_response(tool_calls=[make_tool_call("echo", '{"text":"tokyo"}')]),
+        make_response(tool_calls=[make_tool_call("echo", '{"text":"osaka"}')]),
+    )
+
+    llm = LLM(
+        model="openai:gpt-4o-mini",
+        api_key="dummy",
+        tape_store=AsyncTapeStoreAdapter(InMemoryTapeStore()),
+        context=TapeContext(anchor=None),
+    )
+
+    first = await llm.tool_calls_async("Call echo for tokyo", tape="ops", tools=[echo])
+    second = await llm.tool_calls_async("Call echo for osaka", tape="ops", tools=[echo])
+
+    assert first[0]["function"]["name"] == "echo"
+    assert second[0]["function"]["name"] == "echo"
+    second_messages = client.calls[-1]["messages"]
+    assert [message["role"] for message in second_messages] == ["user", "user"]
+
+
+def test_sync_chat_with_async_tape_store_is_rejected(fake_anyllm) -> None:
+    llm = LLM(
+        model="openai:gpt-4o-mini",
+        api_key="dummy",
+        tape_store=AsyncTapeStoreAdapter(InMemoryTapeStore()),
+        context=TapeContext(anchor=None),
+    )
+
+    with pytest.raises(ErrorPayload) as exc_info:
+        llm.chat("Ping", tape="ops")
+    assert exc_info.value.kind == ErrorKind.INVALID_INPUT
+    assert "Sync tape APIs are unavailable" in exc_info.value.message
 
 
 @pytest.mark.asyncio

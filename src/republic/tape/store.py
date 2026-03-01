@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 from collections.abc import Iterable, Sequence
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, NoReturn, Protocol, TypeGuard
 
 from republic.core.errors import ErrorKind
 from republic.core.results import ErrorPayload
@@ -23,6 +25,22 @@ class TapeStore(Protocol):
     def fetch_all(self, query: TapeQuery) -> Iterable[TapeEntry]: ...
 
     def append(self, tape: str, entry: TapeEntry) -> None: ...
+
+
+class AsyncTapeStore(Protocol):
+    """Async append-only tape storage interface."""
+
+    async def list_tapes(self) -> list[str]: ...
+
+    async def reset(self, tape: str) -> None: ...
+
+    async def fetch_all(self, query: TapeQuery) -> Iterable[TapeEntry]: ...
+
+    async def append(self, tape: str, entry: TapeEntry) -> None: ...
+
+
+def is_async_tape_store(store: TapeStore | AsyncTapeStore) -> TypeGuard[AsyncTapeStore]:
+    return hasattr(store, "append") and inspect.iscoroutinefunction(store.append)
 
 
 def _anchor_index(
@@ -109,3 +127,44 @@ class InMemoryTapeStore(InMemoryQueryMixin):
         self._next_id[tape] = next_id + 1
         stored = TapeEntry(next_id, entry.kind, dict(entry.payload), dict(entry.meta))
         self._tapes.setdefault(tape, []).append(stored)
+
+
+class AsyncTapeStoreAdapter:
+    """Adapt a sync TapeStore to AsyncTapeStore."""
+
+    def __init__(self, store: TapeStore) -> None:
+        self._store = store
+
+    async def list_tapes(self) -> list[str]:
+        return await asyncio.to_thread(self._store.list_tapes)
+
+    async def reset(self, tape: str) -> None:
+        await asyncio.to_thread(self._store.reset, tape)
+
+    async def fetch_all(self, query: TapeQuery) -> Iterable[TapeEntry]:
+        return await asyncio.to_thread(self._store.fetch_all, query)
+
+    async def append(self, tape: str, entry: TapeEntry) -> None:
+        await asyncio.to_thread(self._store.append, tape, entry)
+
+
+class UnavailableTapeStore:
+    """Sync TapeStore sentinel that always fails with a clear message."""
+
+    def __init__(self, message: str) -> None:
+        self._message = message
+
+    def _raise(self) -> NoReturn:
+        raise ErrorPayload(ErrorKind.INVALID_INPUT, self._message)
+
+    def list_tapes(self) -> list[str]:
+        self._raise()
+
+    def reset(self, tape: str) -> None:
+        self._raise()
+
+    def fetch_all(self, query: TapeQuery) -> Iterable[TapeEntry]:
+        self._raise()
+
+    def append(self, tape: str, entry: TapeEntry) -> None:
+        self._raise()

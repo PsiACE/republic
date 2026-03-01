@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Coroutine, Iterable
 from dataclasses import dataclass, field, replace
+from typing import Generic, TypeVar, overload
 
 from republic.tape.entries import TapeEntry
-from republic.tape.store import TapeStore
+from republic.tape.store import AsyncTapeStore, TapeStore
+
+T = TypeVar("T", TapeStore, AsyncTapeStore)
 
 
 @dataclass(frozen=True)
-class TapeQuery:
+class TapeQuery(Generic[T]):
     tape: str
-    store: TapeStore
+    store: T
     _after_anchor: str | None = None
     _after_last: bool = False
     _between: tuple[str, str] | None = None
@@ -36,5 +39,11 @@ class TapeQuery:
     def limit(self, value: int) -> TapeQuery:
         return replace(self, _limit=value)
 
-    def all(self) -> Iterable[TapeEntry]:
+    @overload
+    def all(self: TapeQuery[TapeStore]) -> Iterable[TapeEntry]: ...
+
+    @overload
+    async def all(self: TapeQuery[AsyncTapeStore]) -> Iterable[TapeEntry]: ...
+
+    def all(self) -> Iterable[TapeEntry] | Coroutine[None, None, Iterable[TapeEntry]]:
         return self.store.fetch_all(self)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 from republic.__about__ import DEFAULT_MODEL
 from republic.clients._internal import InternalOps
@@ -20,7 +20,17 @@ from republic.core.results import (
     TextStream,
     ToolAutoResult,
 )
-from republic.tape import Tape, TapeContext, TapeEntry, TapeManager, TapeQuery, TapeStore
+from republic.tape import (
+    AsyncTapeManager,
+    AsyncTapeStore,
+    AsyncTapeStoreAdapter,
+    InMemoryTapeStore,
+    Tape,
+    TapeContext,
+    TapeManager,
+    TapeStore,
+)
+from republic.tape.store import UnavailableTapeStore, is_async_tape_store
 from republic.tools.executor import ToolExecutor
 from republic.tools.schema import ToolInput
 
@@ -40,7 +50,7 @@ class LLM:
         client_args: dict[str, Any] | None = None,
         use_responses: bool = False,
         verbose: int = 0,
-        tape_store: TapeStore | None = None,
+        tape_store: TapeStore | AsyncTapeStore | None = None,
         context: TapeContext | None = None,
         error_classifier: Callable[[Exception], ErrorKind | None] | None = None,
     ) -> None:
@@ -68,11 +78,27 @@ class LLM:
             error_classifier=error_classifier,
         )
         tool_executor = ToolExecutor()
-        self._tape = TapeManager(store=tape_store, default_context=context)
+        if tape_store is None:
+            shared_tape_store = InMemoryTapeStore()
+            sync_tape_store = shared_tape_store
+            async_tape_store = AsyncTapeStoreAdapter(shared_tape_store)
+        elif is_async_tape_store(tape_store):
+            sync_tape_store = UnavailableTapeStore(
+                "Sync tape APIs are unavailable when tape_store is AsyncTapeStore; use async chat/tool APIs.",
+            )
+            async_tape_store = tape_store
+        else:
+            tape_store = cast(TapeStore, tape_store)
+            sync_tape_store = tape_store
+            async_tape_store = AsyncTapeStoreAdapter(tape_store)
+
+        self._tape = TapeManager(store=sync_tape_store, default_context=context)
+        self._async_tape = AsyncTapeManager(store=async_tape_store, default_context=context)
         self._chat_client = ChatClient(
             self._core,
             tool_executor,
             tape=self._tape,
+            async_tape=self._async_tape,
         )
         self._text_client = TextClient(self._chat_client)
         self.embeddings = EmbeddingClient(self._core)
@@ -93,17 +119,15 @@ class LLM:
 
     @property
     def context(self) -> TapeContext:
-        return self._tape.default_context
+        return self._async_tape.default_context
 
     @context.setter
     def context(self, value: TapeContext) -> None:
         self._tape.default_context = value
+        self._async_tape.default_context = value
 
     def tape(self, name: str, *, context: TapeContext | None = None) -> Tape:
-        return self._tape.tape(name, llm=self, context=context)
-
-    def tapes(self) -> list[str]:
-        return self._tape.list_tapes()
+        return Tape(name, chat_client=self._chat_client, context=context)
 
     def chat(
         self,
@@ -426,18 +450,6 @@ class LLM:
             tools=tools,
             **kwargs,
         )
-
-    def handoff(self, tape: str, name: str, *, state: dict[str, Any] | None = None, **meta: Any) -> list[TapeEntry]:
-        return self._tape.handoff(tape, name, state=state, **meta)
-
-    def read_messages(self, tape: str, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
-        return self._tape.read_messages(tape, context=context)
-
-    def query(self, tape: str) -> TapeQuery:
-        return self._tape.query_tape(tape)
-
-    def reset_tape(self, tape: str) -> None:
-        self._tape.reset_tape(tape)
 
     def __repr__(self) -> str:
         return (

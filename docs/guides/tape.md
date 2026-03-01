@@ -51,3 +51,31 @@ print([entry.kind for entry in previous])
 - Tape entries are append-only and never overwrite history.
 - Query/Context depend on entry order, not external indexes.
 - Errors are recorded as first-class entries for replay.
+
+## Async Tape Store
+
+When `tape_store` is configured as an `AsyncTapeStore` (or its adapter), async calls with `tape=...` read and write context through `AsyncTapeManager`.
+
+```python
+from republic import LLM, TapeContext
+from republic.tape.store import AsyncTapeStoreAdapter, InMemoryTapeStore
+
+llm = LLM(
+    model="openai:gpt-4o-mini",
+    api_key="<API_KEY>",
+    tape_store=AsyncTapeStoreAdapter(InMemoryTapeStore()),
+    context=TapeContext(anchor=None),
+)
+
+first = await llm.chat_async("Investigate DB timeout", tape="ops")
+second = await llm.chat_async("Include rollback criteria", tape="ops")
+print(first, second)
+```
+
+## Sync vs Async Rules
+
+When `tape_store` is an `AsyncTapeStore`:
+
+- Sync APIs with `tape=...` are unavailable (they raise `ErrorPayload`).
+- Use async APIs instead: `chat_async`, `tool_calls_async`, `run_tools_async`, `stream_async`, and `stream_events_async`.
+- `llm.tape("...")` returns a session object that exposes both sync and async methods; in this mode, use the `*_async` methods.
