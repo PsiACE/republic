@@ -14,6 +14,7 @@ from republic.core.results import (
 from republic.tape.context import TapeContext
 from republic.tape.entries import TapeEntry
 from republic.tape.query import TapeQuery
+from republic.tape.store import AsyncTapeStore, TapeStore
 from republic.tools.schema import ToolInput
 
 if TYPE_CHECKING:
@@ -59,7 +60,7 @@ class Tape(_TapeBase):
         self._client._tape.append_entry(self._name, entry)
 
     @property
-    def query(self) -> TapeQuery:
+    def query(self) -> TapeQuery[TapeStore]:
         return self._client._tape.query_tape(self._name)
 
     def reset(self) -> None:
@@ -188,6 +189,10 @@ class Tape(_TapeBase):
             tools=tools,
             **kwargs,
         )
+
+    @property
+    def query_async(self) -> TapeQuery[AsyncTapeStore]:
+        return self._client._async_tape.query_tape(self._name)
 
     async def read_messages_async(self, *, context: TapeContext | None = None) -> list[dict[str, Any]]:
         active_context = context or self.context
